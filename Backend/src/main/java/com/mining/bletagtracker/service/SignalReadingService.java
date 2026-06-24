@@ -35,23 +35,26 @@ public class SignalReadingService {
                 .build();
         SignalReading saved = signalRepository.save(reading);
 
-        // FIFO: keep only the most recent MAX_SIGNALS_PER_TAG readings per tag
+        // FIFO pruning: delete oldest excess records in a single SQL query
         pruneOldSignals(request.serialNumber());
 
         return saved;
     }
 
     private void pruneOldSignals(String serialNumber) {
+        // Quick count check — skip pruning if under limit (fast with index)
         long count = signalRepository.countBySerialNumber(serialNumber);
-        if (count > MAX_SIGNALS_PER_TAG) {
-            List<SignalReading> all = signalRepository.findBySerialNumberOrderByTimestampAsc(serialNumber);
-            int toDelete = all.size() - MAX_SIGNALS_PER_TAG;
-            List<Long> idsToDelete = all.stream().limit(toDelete).map(SignalReading::getId).toList();
-            try {
-                signalRepository.deleteAllById(idsToDelete);
-            } catch (Exception e) {
-                // Ignore race condition — another thread may have already deleted some IDs
+        if (count <= MAX_SIGNALS_PER_TAG) {
+            return;
+        }
+        // Single SQL query: delete oldest excess IDs without loading entities
+        try {
+            List<Long> idsToDelete = signalRepository.findOldestExcessIds(serialNumber, MAX_SIGNALS_PER_TAG);
+            if (!idsToDelete.isEmpty()) {
+                signalRepository.deleteAllByIdInBatch(idsToDelete);
             }
+        } catch (Exception e) {
+            // Ignore race condition — another thread may have already deleted some IDs
         }
     }
 

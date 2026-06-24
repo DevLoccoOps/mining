@@ -9,7 +9,9 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "signal_readings")
+@Table(name = "signal_readings", indexes = {
+    @Index(name = "idx_signal_serial_timestamp", columnList = "serial_number, timestamp")
+})
 @Data
 @Builder
 @NoArgsConstructor

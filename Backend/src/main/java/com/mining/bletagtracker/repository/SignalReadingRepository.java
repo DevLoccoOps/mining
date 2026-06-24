@@ -3,6 +3,9 @@ package com.mining.bletagtracker.repository;
 import com.mining.bletagtracker.entity.SignalReading;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+
 import java.util.List;
 
 public interface SignalReadingRepository extends JpaRepository<SignalReading, Long> {
@@ -16,4 +19,10 @@ public interface SignalReadingRepository extends JpaRepository<SignalReading, Lo
     long countBySerialNumber(String serialNumber);
 
     List<SignalReading> findFirst50BySerialNumberOrderByTimestampAsc(String serialNumber);
+
+    @Modifying
+    @Query("DELETE FROM SignalReading s WHERE s.id IN " +
+            "(SELECT s2.id FROM SignalReading s2 WHERE s2.serialNumber = :serialNumber " +
+            "ORDER BY s2.timestamp ASC LIMIT 1000)")
+    void deleteOldestExcessBySerialNumber(String serialNumber);
 }
