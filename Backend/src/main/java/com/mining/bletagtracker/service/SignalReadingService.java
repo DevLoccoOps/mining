@@ -42,17 +42,9 @@ public class SignalReadingService {
     }
 
     private void pruneOldSignals(String serialNumber) {
-        // Quick count check — skip pruning if under limit (fast with index)
-        long count = signalRepository.countBySerialNumber(serialNumber);
-        if (count <= MAX_SIGNALS_PER_TAG) {
-            return;
-        }
-        // Single SQL query: delete oldest excess IDs without loading entities
+        // Single SQL query deletes oldest excess records without loading entities
         try {
-            List<Long> idsToDelete = signalRepository.findOldestExcessIds(serialNumber, MAX_SIGNALS_PER_TAG);
-            if (!idsToDelete.isEmpty()) {
-                signalRepository.deleteAllByIdInBatch(idsToDelete);
-            }
+            signalRepository.deleteOldestExcessBySerialNumber(serialNumber);
         } catch (Exception e) {
             // Ignore race condition — another thread may have already deleted some IDs
         }

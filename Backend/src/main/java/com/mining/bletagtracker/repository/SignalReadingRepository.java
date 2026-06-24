@@ -21,8 +21,8 @@ public interface SignalReadingRepository extends JpaRepository<SignalReading, Lo
     List<SignalReading> findFirst50BySerialNumberOrderByTimestampAsc(String serialNumber);
 
     @Modifying
-    @Query("DELETE FROM SignalReading s WHERE s.id IN " +
-            "(SELECT s2.id FROM SignalReading s2 WHERE s2.serialNumber = :serialNumber " +
-            "ORDER BY s2.timestamp ASC LIMIT 1000)")
-    void deleteOldestExcessBySerialNumber(String serialNumber);
+    @Query(value = "DELETE FROM signal_readings WHERE id IN (" +
+            "SELECT id FROM signal_readings WHERE serial_number = :serialNumber " +
+            "ORDER BY timestamp ASC LIMIT 1000)", nativeQuery = true)
+    int deleteOldestExcessBySerialNumber(String serialNumber);
 }

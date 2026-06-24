@@ -14,6 +14,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class BleTagService {
 
+    private static final java.time.Duration CACHE_TTL = java.time.Duration.ofSeconds(30);
+
     private final BleTagRepository tagRepository;
 
     public TagResponse createTag(CreateTagRequest request) {

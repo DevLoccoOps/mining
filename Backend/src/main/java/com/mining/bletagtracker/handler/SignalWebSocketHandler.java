@@ -26,9 +26,15 @@ public class SignalWebSocketHandler extends TextWebSocketHandler {
     );
 
     private final ObjectMapper objectMapper;
-    // ObjectWriter is thread-safe — created once, used concurrently without contention
-    private final com.fasterxml.jackson.databind.ObjectWriter objectWriter = objectMapper.writer();
+    // ObjectWriter is thread-safe — created once in @PostConstruct, used concurrently without contention
     private final Set<WebSocketSession> sessions = new CopyOnWriteArraySet<>();
+
+    private com.fasterxml.jackson.databind.ObjectWriter objectWriter;
+
+    @jakarta.annotation.PostConstruct
+    private void init() {
+        this.objectWriter = objectMapper.writer();
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
