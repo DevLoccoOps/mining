@@ -223,6 +223,19 @@ async def emit(signal: dict, mode: str, backend_url: str) -> None:
 
 async def fetch_tags_from_api(api_base_url: str, local_tags_path: str | None = None) -> dict:
     """Fetch registered tags from backend API. Falls back to local JSON if unavailable."""
+
+    def normalize_tag(tag: dict) -> dict:
+        """Normalize API response (camelCase) to scanner format (snake_case)."""
+        # API may return camelCase (ibeaconUuids) or snake_case (ibeacon_uuids)
+        return {
+            "serialNumber": tag.get("serialNumber") or tag.get("serial_number"),
+            "name": tag.get("name", ""),
+            "ibeacon_uuids": tag.get("ibeaconUuids") or tag.get("ibeacon_uuids", []),
+            "service_uuids": tag.get("serviceUuids") or tag.get("service_uuids", []),
+            "mfg_signatures": tag.get("mfgSignatures") or tag.get("mfg_signatures", []),
+            "rssi_threshold": tag.get("rssiThreshold") or tag.get("rssi_threshold", -90),
+        }
+
     # Try to fetch from backend API
     api_url = f"{api_base_url.rstrip('/')}/api/tags/scanner"
     try:
@@ -231,8 +244,7 @@ async def fetch_tags_from_api(api_base_url: str, local_tags_path: str | None = N
             async with session.get(api_url) as resp:
                 if resp.status == 200:
                     tags = await resp.json()
-                    # Convert list of ScannerTagResponse to dict format for matching
-                    return {tag["serialNumber"]: tag for tag in tags}
+                    return {tag["serialNumber"]: normalize_tag(tag) for tag in tags}
     except Exception as e:
         print(f"[WARN] Could not fetch tags from backend ({e})")
 
