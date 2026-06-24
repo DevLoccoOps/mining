@@ -1,0 +1,16 @@
+{
+  "HGY0ADJ6GZ3": {
+    "name": "Lebohang",
+    "ibeacon_uuids": [
+      "B2B98DE4-C81C-47C2-B14E-791B3E5587EC"
+    ],
+    "rssi_threshold": -90
+  },
+  "HD5081ZVBJD": {
+    "name": "Nthabiseng",
+    "ibeacon_uuids": [
+      "A81A6C31-B23D-523F-7E95-DEB0071CDAFD"
+    ],
+    "rssi_threshold": -90
+  }
+}

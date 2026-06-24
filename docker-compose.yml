@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=ble_tag_tracker
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/tags"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=ble_tag_tracker
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

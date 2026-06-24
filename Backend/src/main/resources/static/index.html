@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE Tag Tracker - Mine Safety</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0e17;
+            color: #c8d6e5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ===== Main Layout: sidebar + map ===== */
+        .container {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            height: 100vh;
+        }
+
+        /* ===== Sidebar ===== */
+        .sidebar {
+            background: #111827;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #1e293b;
+            overflow: hidden;
+        }
+
+        /* Compact KPI strip at top of sidebar */
+        .kpi-strip {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0;
+            border-bottom: 1px solid #1e293b;
+            flex-shrink: 0;
+        }
+
+        .kpi-item {
+            text-align: center;
+            padding: 8px 4px;
+            border-right: 1px solid #1e293b;
+        }
+
+        .kpi-item:last-child { border-right: none; }
+
+        .kpi-label {
+            font-size: 8px;
+            text-transform: uppercase;
+            color: #64748b;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
+        .kpi-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #f1f5f9;
+        }
+
+        .kpi-good .kpi-value { color: #10b981; }
+        .kpi-alert .kpi-value { color: #ef4444; }
+        .kpi-signal .kpi-value { color: #3b82f6; }
+
+        /* App title */
+        .sidebar-title {
+            font-size: 10px;
+            color: #ef4444;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            padding: 8px 12px;
+            border-bottom: 1px solid #1e293b;
+            flex-shrink: 0;
+        }
+
+        /* Tag list */
+        .tag-list-container {
+            flex: 1;
+            overflow-y: auto;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .tag-list { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+
+        .tag-card {
+            background: #1a2332;
+            border-radius: 6px;
+            padding: 8px 10px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.3s, background 0.3s;
+        }
+
+        .tag-card.active { border-color: #ef4444; background: #1e293b; }
+        .tag-card:hover { border-color: #334155; }
+
+        .tag-card .tag-name-row {
+            display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
+        }
+
+        .tag-card .tag-avatar {
+            width: 20px; height: 20px; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; flex-shrink: 0;
+            position: relative;
+        }
+
+        .tag-card .tag-avatar svg { width: 11px; height: 11px; }
+
+        /* Movement states for avatar */
+        .tag-avatar.walk-swatch svg {
+            animation: walkBob 0.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes walkBob {
+            0%   { transform: translateY(0); }
+            100% { transform: translateY(-2px); }
+        }
+
+        .tag-card .card-name { font-size: 11px; font-weight: 600; color: #f1f5f9; flex: 1; }
+        .tag-card .card-serial { font-size: 8px; color: #64748b; font-family: monospace; }
+
+        .tag-card .card-metrics {
+            display: flex; gap: 6px; font-size: 9px; color: #94a3b8;
+        }
+
+        .tag-card .card-metrics span { display: flex; align-items: center; gap: 2px; }
+
+        /* Detail panel */
+        .detail-panel {
+            max-height: 45vh;
+            overflow-y: auto;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .metric {
+            background: #1a2332;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin: 6px 8px;
+        }
+
+        .metric .label {
+            font-size: 8px;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 2px;
+            letter-spacing: 0.5px;
+        }
+
+        .metric .value { font-size: 16px; font-weight: 700; }
+        .metric .unit { font-size: 10px; color: #64748b; margin-left: 2px; }
+
+        .rssi-good { color: #10b981; }
+        .rssi-mid  { color: #f59e0b; }
+        .rssi-bad  { color: #ef4444; }
+
+        /* Signal bars */
+        .signal-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 16px;
+            margin-top: 3px;
+        }
+
+        .signal-bars .bar {
+            width: 4px;
+            border-radius: 1px;
+            background: #1e293b;
+            transition: background 0.3s;
+        }
+
+        .signal-bars .bar.active-green { background: #10b981; }
+        .signal-bars .bar.active-yellow { background: #f59e0b; }
+        .signal-bars .bar.active-red { background: #ef4444; }
+
+        /* Trend */
+        .trend-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .trend-arrow {
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .trend-arrow.up { color: #ef4444; }
+        .trend-arrow.down { color: #10b981; }
+        .trend-arrow.stable { color: #64748b; }
+
+        /* Proximity badge */
+        .prox-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .prox-close   { background: #10b98122; color: #10b981; }
+        .prox-near    { background: #f59e0b22; color: #f59e0b; }
+        .prox-medium  { background: #f9731622; color: #f97316; }
+        .prox-far     { background: #ef444422; color: #ef4444; }
+        .prox-away    { background: #33415522; color: #64748b; }
+
+        /* Confidence */
+        .confidence-bar-bg {
+            width: 100%;
+            height: 3px;
+            background: #1e293b;
+            border-radius: 2px;
+            margin-top: 3px;
+        }
+
+        .confidence-bar {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s, background 0.5s;
+        }
+
+        /* Mini chart */
+        .mini-chart {
+            background: #1a2332;
+            padding: 6px 10px;
+            margin: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .mini-chart .label {
+            font-size: 8px;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        /* Movement breakdown */
+        .direction-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 4px;
+        }
+
+        .dir-stat {
+            background: #0f172a;
+            padding: 6px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .dir-stat .label { font-size: 7px; text-transform: uppercase; color: #475569; margin-bottom: 2px; }
+        .dir-stat .value { font-size: 12px; font-weight: 700; }
+
+        /* Proximity histogram */
+        .prox-hist {
+            background: #1a2332;
+            padding: 8px 10px;
+            margin: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .prox-hist .label {
+            font-size: 8px;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 6px;
+        }
+
+        .prox-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 2px;
+        }
+
+        .prox-label { font-size: 8px; width: 40px; text-align: right; flex-shrink: 0; }
+        .prox-bar-bg {
+            flex: 1; height: 8px; background: #0f172a; border-radius: 2px; overflow: hidden;
+        }
+        .prox-bar { height: 100%; border-radius: 2px; transition: width 0.5s; }
+        .prox-count { font-size: 9px; width: 20px; text-align: right; flex-shrink: 0; color: #94a3b8; }
+
+        /* Alert panel */
+        .alert-panel {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .alert-panel .label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+        }
+
+        .alert-panel .label { margin-bottom: 0; font-size: 8px; }
+
+        .clear-btn {
+            background: none;
+            border: 1px solid #334155;
+            color: #64748b;
+            font-size: 7px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .alert-item {
+            padding: 4px 10px;
+            font-size: 9px;
+            border-left: 2px solid transparent;
+        }
+
+        .alert-item.critical {
+            background: rgba(239, 68, 68, 0.1);
+            border-left-color: #ef4444;
+        }
+
+        .alert-item.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-left-color: #f59e0b;
+        }
+
+        .alert-item.info {
+            background: rgba(59, 130, 246, 0.1);
+            border-left-color: #3b82f6;
+        }
+
+        .alert-item .alert-time { color: #475569; font-size: 7px; }
+
+        /* Status & refresh */
+        .sidebar-footer {
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 9px;
+            color: #64748b;
+        }
+
+        .status-dot {
+            width: 5px; height: 5px; border-radius: 50%; background: #334155;
+        }
+
+        .status-dot.connected {
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .update-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .update-btn:hover { background: #dc2626; }
+
+        /* ===== Toast notifications ===== */
+        .toast-container {
+            position: fixed;
+            top: 8px;
+            right: 12px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: #1e293b;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 10px;
+            color: #f1f5f9;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            animation: toastIn 0.3s ease-out;
+            max-width: 280px;
+            pointer-events: auto;
+        }
+
+        .toast.critical { border-left: 3px solid #ef4444; }
+        .toast.warning  { border-left: 3px solid #f59e0b; }
+        .toast.info     { border-left: 3px solid #3b82f6; }
+
+        @keyframes toastIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to   { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes toastOut {
+            from { opacity: 1; transform: translateX(0); }
+            to   { opacity: 0; transform: translateX(100%); }
+        }
+
+        /* ===== Map area ===== */
+        .map-area {
+            position: relative;
+            background: #0a0e17;
+            overflow: hidden;
+        }
+
+        .floor-plan {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .floor-plan svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Tag marker */
+        .tag-marker {
+            position: absolute;
+            width: 44px; height: 44px;
+            transform: translate(-50%, -50%);
+            z-index: 15;
+        }
+
+        .tag-marker-ping {
+            position: absolute;
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            animation: pingAnim 2s infinite;
+        }
+
+        @keyframes pingAnim {
+            0% { transform: scale(1); opacity: 0.4; }
+            100% { transform: scale(3); opacity: 0; }
+        }
+
+        .tag-label {
+            position: absolute;
+            top: -16px; left: 50%;
+            transform: translateX(-50%);
+            font-size: 8px;
+            font-weight: 600;
+            white-space: nowrap;
+            color: #e2e8f0;
+            text-shadow: 0 0 4px #0a0e17, 0 0 8px #0a0e17;
+            pointer-events: none;
+        }
+
+        /* Offline marker */
+        .tag-marker.offline svg { opacity: 0.3; filter: grayscale(1); }
+        .tag-marker.offline::after {
+            content: '\2716';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            font-weight: 900;
+            color: #ef4444;
+            z-index: 20;
+        }
+
+        /* Movement trail dot */
+        .trail-dot {
+            position: absolute;
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        /* Reading rate */
+        .reading-rate {
+            position: absolute;
+            bottom: 10px; right: 10px;
+            background: rgba(30, 41, 59, 0.9);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 9px;
+            color: #64748b;
+        }
+
+        /* Safety legend */
+        .safety-legend {
+            position: absolute;
+            bottom: 10px; left: 10px;
+            background: rgba(17, 24, 39, 0.95);
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            padding: 6px 8px;
+            z-index: 20;
+            font-size: 8px;
+        }
+
+        .safety-legend .legend-title {
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            font-weight: 700;
+        }
+
+        .safety-legend .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 1px;
+        }
+
+        .safety-legend .legend-swatch {
+            width: 8px; height: 8px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .safety-legend .legend-label { color: #94a3b8; font-size: 7px; }
+
+        /* Danger zone outline */
+        .danger-zone-outline {
+            fill: none;
+            stroke: #ef4444;
+            stroke-width: 0.5;
+            stroke-dasharray: 2 2;
+            opacity: 0.6;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr !important; }
+            .sidebar { max-height: 40vh; }
+        }
+
+        /* ===== Walking person SVG animations ===== */
+        @keyframes swingArmL { 0% { transform: rotate(-15deg); } 100% { transform: rotate(15deg); } }
+        @keyframes swingArmR { 0% { transform: rotate(15deg); } 100% { transform: rotate(-15deg); } }
+        @keyframes swingLegL { 0% { transform: rotate(-12deg); } 100% { transform: rotate(12deg); } }
+        @keyframes swingLegR { 0% { transform: rotate(12deg); } 100% { transform: rotate(-12deg); } }
+
+        /* Standing person = no animations */
+        .person-svg.standing line { animation: none !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar (left panel) -->
+        <aside class="sidebar">
+            <!-- Compact KPI strip -->
+            <div class="kpi-strip">
+                <div class="kpi-item">
+                    <div class="kpi-label">Workers</div>
+                    <div class="kpi-value" id="kpiTotal">0</div>
+                </div>
+                <div class="kpi-item kpi-good">
+                    <div class="kpi-label">Safe</div>
+                    <div class="kpi-value" id="kpiSafe">0</div>
+                </div>
+                <div class="kpi-item kpi-alert">
+                    <div class="kpi-label">Alerts</div>
+                    <div class="kpi-value" id="kpiAlerts">0</div>
+                </div>
+            </div>
+
+            <div class="sidebar-title">MOUNTED TAG READER</div>
+
+            <!-- Tag list -->
+            <div class="tag-list-container">
+                <div class="tag-list" id="tagList">
+                    <div style="color:#64748b;font-size:10px;text-align:center;padding:20px 0;">Loading tags...</div>
+                </div>
+            </div>
+
+            <!-- Per-tag detail (shown when selected) -->
+            <div class="detail-panel" id="tagDetail" style="display:none;">
+                <div class="metric">
+                    <div class="label">Zone / Safety</div>
+                    <div id="zoneStatusBadge"><span class="prox-badge prox-away">---</span></div>
+                </div>
+
+                <div class="metric">
+                    <div class="label">Signal Strength (RSSI)</div>
+                    <div class="value" id="rssiValue"><span style="color:#334155">--</span></div>
+                    <div class="signal-bars" id="signalBars"></div>
+                </div>
+
+                <div class="metric">
+                    <div class="label">Estimated Distance</div>
+                    <div class="value" id="distValue"><span style="color:#334155">--</span><span class="unit">m</span></div>
+                </div>
+
+                <div class="metric">
+                    <div class="label">Trend</div>
+                    <div class="trend-row">
+                        <span class="trend-arrow stable" id="trendArrow">&#8594;</span>
+                        <span id="trendText">No data</span>
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="label">Confidence</div>
+                    <div style="font-size:10px;color:#94a3b8;" id="confText">Waiting...</div>
+                    <div class="confidence-bar-bg">
+                        <div class="confidence-bar" id="confBar" style="width:0%;background:#334155;"></div>
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="label">Battery Level</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <svg width="22" height="11" viewBox="0 0 24 12">
+                            <rect x="0.5" y="0.5" width="21" height="11" rx="2" fill="none" stroke="#475569" stroke-width="1"/>
+                            <rect x="22" y="3" width="2" height="6" rx="1" fill="#475569"/>
+                            <rect id="batteryFill" x="2" y="2" width="0" height="8" rx="1" fill="#334155"/>
+                        </svg>
+                        <span id="batteryPercent" style="font-size:12px;font-weight:700;color:#64748b;">--%</span>
+                    </div>
+                </div>
+
+                <div class="mini-chart">
+                    <div class="label">Signal History</div>
+                    <canvas id="signalChart" height="35"></canvas>
+                </div>
+
+                <div class="metric">
+                    <div class="label">Movement</div>
+                    <div class="direction-stats">
+                        <div class="dir-stat">
+                            <div class="label">Away</div>
+                            <div class="value" id="dirAway" style="color:#ef4444;">0</div>
+                        </div>
+                        <div class="dir-stat">
+                            <div class="label">Still</div>
+                            <div class="value" id="dirStation" style="color:#f59e0b;">0</div>
+                        </div>
+                        <div class="dir-stat">
+                            <div class="label">Closer</div>
+                            <div class="value" id="dirCloser" style="color:#10b981;">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="prox-hist">
+                    <div class="label">Proximity</div>
+                    <div id="proxBars"></div>
+                </div>
+            </div>
+
+            <!-- Alert Panel -->
+            <div class="metric alert-panel" id="alertPanel">
+                <div class="label-row">
+                    <div class="label">Safety Alerts</div>
+                    <button class="clear-btn" id="clearAlertsBtn">Clear</button>
+                </div>
+                <div id="alertList" style="margin-top:4px;">
+                    <div style="color:#475569;font-size:8px;text-align:center;padding:8px 0;">No alerts</div>
+                </div>
+            </div>
+
+            <!-- Footer: status + refresh -->
+            <div class="sidebar-footer">
+                <div class="status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Connecting...</span>
+                </div>
+                <button class="update-btn" onclick="refreshAll()">Refresh</button>
+            </div>
+        </aside>
+
+        <!-- Map Area (right panel - full remaining height) -->
+        <main class="map-area">
+            <div class="floor-plan" id="floorPlan">
+                <!-- Floor plan SVG with mine safety zones -->
+                <svg viewBox="0 0 100 65" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Background fill -->
+                    <rect x="0" y="0" width="100" height="65" fill="#0d1117"/>
+
+                    <!-- Safety zone tints -->
+                    <rect x="0.5" y="8" width="14" height="56" fill="#f97316" opacity="0.07" rx="1"/>
+                    <rect x="0.5" y="0.5" width="14" height="7" fill="#eab308" opacity="0.06" rx="1"/>
+                    <rect x="67" y="8" width="32.5" height="12" fill="#f59e0b" opacity="0.04" rx="1"/>
+                    <rect x="67" y="20" width="32.5" height="28" fill="#10b981" opacity="0.04" rx="1"/>
+                    <rect x="67" y="32" width="32.5" height="16" fill="#f59e0b" opacity="0.03" rx="1"/>
+
+                    <!-- Danger zone outline -->
+                    <rect x="0.5" y="8" width="14" height="56" class="danger-zone-outline" rx="1"/>
+
+                    <!-- Exterior walls -->
+                    <rect x="0.5" y="0.5" width="99" height="64" fill="none" stroke="#334155" stroke-width="0.7"/>
+
+                    <!-- Interior walls -->
+                    <line x1="15" y1="0.5" x2="15" y2="64.5" stroke="#475569" stroke-width="0.4"/>
+                    <line x1="0.5" y1="8" x2="15" y2="8" stroke="#475569" stroke-width="0.4"/>
+                    <line x1="15" y1="20" x2="67" y2="20" stroke="#475569" stroke-width="0.4"/>
+                    <line x1="67" y1="20" x2="67" y2="48" stroke="#475569" stroke-width="0.4"/>
+                    <line x1="67" y1="0.5" x2="67" y2="48" stroke="#475569" stroke-width="0.4"/>
+                    <line x1="67" y1="8" x2="99.5" y2="8" stroke="#475569" stroke-width="0.4"/>
+                    <line x1="85" y1="0.5" x2="85" y2="8" stroke="#475569" stroke-width="0.4"/>
+
+                    <!-- Zone labels -->
+                    <text x="7.5" y="24" text-anchor="middle" fill="#f97316" font-size="2.5" font-weight="700" opacity="0.7">WORKING FACE</text>
+                    <text x="7.5" y="4.5" text-anchor="middle" fill="#eab308" font-size="2" font-weight="600" opacity="0.7">STORAGE</text>
+                    <text x="83.2" y="24" text-anchor="middle" fill="#f59e0b" font-size="2.5" font-weight="700" opacity="0.7">TRANSIT</text>
+                    <text x="55" y="42" text-anchor="middle" fill="#10b981" font-size="3" font-weight="700" opacity="0.7">CONTROL ROOM</text>
+
+                    <!-- Assembly point -->
+                    <g transform="translate(5, 58)">
+                        <circle cx="0" cy="0" r="4" fill="none" stroke="#10b981" stroke-width="0.3" opacity="0.6"/>
+                        <circle cx="0" cy="0" r="1.5" fill="#10b981" opacity="0.4"/>
+                        <text x="0" y="7" text-anchor="middle" fill="#10b981" font-size="1.8" font-weight="600">Assembly</text>
+                    </g>
+
+                    <!-- Anchor marker -->
+                    <g transform="translate(85, 55)">
+                        <rect x="-6" y="-4.5" width="12" height="9" rx="1" fill="#1e293b" stroke="#64748b" stroke-width="0.25"/>
+                        <rect x="-4" y="-2.8" width="8" height="3.5" rx="0.5" fill="#334155"/>
+                        <rect x="-7" y="-0.2" width="14" height="0.8" rx="0.4" fill="#334155"/>
+                        <text x="0" y="-6.5" text-anchor="middle" fill="#64748b" font-size="2.2" font-weight="700">anchor</text>
+                    </g>
+
+                    <!-- Compass -->
+                    <g transform="translate(4, 5)">
+                        <circle cx="0" cy="0" r="3" fill="none" stroke="#1e293b" stroke-width="0.3"/>
+                        <text x="0" y="-2" text-anchor="middle" fill="#475569" font-size="2.2" font-weight="700">N</text>
+                        <polygon points="0,-4 -1.2,-2 1.2,-2" fill="#475569"/>
+                    </g>
+                </svg>
+
+                <!-- Safety legend -->
+                <div class="safety-legend" id="safetyLegend">
+                    <div class="legend-title">Zones</div>
+                    <div class="legend-row"><div class="legend-swatch" style="background:#10b981;"></div><span class="legend-label">Control Room (Safe)</span></div>
+                    <div class="legend-row"><div class="legend-swatch" style="background:#f59e0b;"></div><span class="legend-label">Transit</span></div>
+                    <div class="legend-row"><div class="legend-swatch" style="background:#f97316;"></div><span class="legend-label">Working Face</span></div>
+                    <div class="legend-row"><div class="legend-swatch" style="background:#eab308;"></div><span class="legend-label">Storage</span></div>
+                </div>
+
+                <!-- Movement trails overlay -->
+                <svg id="trailSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:4;"></svg>
+                <!-- Connection lines overlay -->
+                <svg id="connSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;"></svg>
+
+                <div class="reading-rate" id="readingRate">No connection</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Walking person SVG template (for tag cards) -->
+    <template id="walkingSvgTemplate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="4.5" r="1.5"/>
+            <line x1="12" y1="6" x2="12" y2="13"/>
+            <line class="w-arm-l" x1="12" y1="8.5" x2="9.5" y2="13" style="transform-origin: 12px 8.5px; animation: swingArmL 0.5s ease-in-out infinite alternate;"/>
+            <line class="w-arm-r" x1="12" y1="8.5" x2="14.5" y2="13" style="transform-origin: 12px 8.5px; animation: swingArmR 0.5s ease-in-out infinite alternate;"/>
+            <line class="w-leg-l" x1="12" y1="13" x2="9.5" y2="20" style="transform-origin: 12px 13px; animation: swingLegL 0.5s ease-in-out infinite alternate;"/>
+            <line class="w-leg-r" x1="12" y1="13" x2="14.5" y2="20" style="transform-origin: 12px 13px; animation: swingLegR 0.5s ease-in-out infinite alternate;"/>
+        </svg>
+    </template>
+
+    <!-- Standing person SVG template (for tag cards) -->
+    <template id="standingSvgTemplate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="standing">
+            <circle cx="12" cy="4.5" r="1.5"/>
+            <line x1="12" y1="6" x2="12" y2="13"/>
+            <line class="w-arm-l" x1="12" y1="8.5" x2="9.5" y2="13"/>
+            <line class="w-arm-r" x1="12" y1="8.5" x2="14.5" y2="13"/>
+            <line class="w-leg-l" x1="12" y1="13" x2="10" y2="20"/>
+            <line class="w-leg-r" x1="12" y1="13" x2="14" y2="20"/>
+        </svg>
+    </template>
+
+<script>
+    const API_BASE = '/api';
+    const WS_URL = '/ws/signals';
+
+    // Distance estimation
+    const REF_RSSI_AT_1M = -55;
+    const PATH_LOSS = 3.0;
+    const MAX_RANGE = 60;
+    const MAX_HISTORY = 60;
+
+    // Smoothing
+    const RSSI_SMOOTH_ALPHA = 0.7;
+    const POS_SMOOTH_ALPHA = 0.15;
+    const MAX_JUMP_PX = 80;
+    const ROOM_HYSTERIS = 3;
+
+    // Safety
+    const LOST_SIGNAL_THRESHOLD_MS = 10000;
+    const TRAIL_MAX_LENGTH = 15;
+    const BATTERY_LOW_THRESHOLD = 30;
+    const BATTERY_MED_THRESHOLD = 60;
+
+    // Movement detection: position change threshold to consider "moving"
+    const MOVEMENT_THRESHOLD = 0.3; // percentage units on the floor plan
+
+    // Chart zone boundaries
+    const CHART_ZONE_GOOD_RSSI = -65;
+    const CHART_ZONE_POOR_RSSI = -80;
+
+    // Safety zones
+    const SAFETY_ZONES = {
+        A: { name: 'Working Face', severity: 'danger', color: '#f97316' },
+        B: { name: 'Storage', severity: 'caution', color: '#eab308' },
+        C: { name: 'Transit Corridor', severity: 'moderate', color: '#f59e0b' },
+        D: { name: 'Control Room', severity: 'safe', color: '#10b981' },
+    };
+
+    // Room coordinates
+    const ROOMS = {
+        A: { cx: 7.5, cy: 32 },
+        B: { cx: 7.5, cy: 4 },
+        C: { cx: 83, cy: 30 },
+        D: { cx: 55, cy: 52 },
+    };
+
+    // Reader position
+    const LAPTOP_POS = { x: 85, y: 72 };
+    const ROOM_SPREAD = 10;
+
+    // Per-tag state
+    const tagState = {};
+    let selectedTagSerial = null;
+
+    // Global alerts
+    const globalAlerts = [];
+
+    // Proximity zones
+    const PROX_ZONES = [
+        { minRssi: -55, maxRssi: 127, label: 'VERY CLOSE', dist: '0-2m',   color: '#10b981', cls: 'prox-close' },
+        { minRssi: -65, maxRssi: -55,  label: 'CLOSE',      dist: '2-5m',   color: '#059669', cls: 'prox-near' },
+        { minRssi: -75, maxRssi: -65,  label: 'NEAR',       dist: '5-10m',  color: '#f59e0b', cls: 'prox-near' },
+        { minRssi: -85, maxRssi: -75,  label: 'MEDIUM',     dist: '10-25m', color: '#f97316', cls: 'prox-medium' },
+        { minRssi: -100, maxRssi: -85, label: 'FAR',        dist: '25-50m', color: '#ef4444', cls: 'prox-far' },
+        { minRssi: -120, maxRssi: -100,label: 'AWAY',       dist: '>50m',   color: '#64748b', cls: 'prox-away' },
+    ];
+
+    // ===== Animation loop state =====
+    let animationRunning = false;
+    const prevPositions = {}; // track previous positions for movement detection
+
+    // ===== Init signal bars =====
+    (function initSignalBars() {
+        const container = document.getElementById('signalBars');
+        for (let i = 0; i < 5; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            bar.style.height = (3 + i * 2.5) + 'px';
+            container.appendChild(bar);
+        }
+    })();
+
+    // ===== Safety zone helpers =====
+    function getSafetyStatus(serial) {
+        const state = tagState[serial];
+        if (!state) return SAFETY_ZONES.D;
+        if (state.isOffline) return { color: '#64748b', name: 'OFFLINE' };
+        const zone = SAFETY_ZONES[state.room] || SAFETY_ZONES.D;
+        if (zone.severity === 'danger') return { color: '#ef4444', name: 'DANGER' };
+        if (state.batteryPercent !== null && state.batteryPercent < BATTERY_LOW_THRESHOLD) {
+            return { color: '#ef4444', name: 'LOW BATTERY' };
+        }
+        return { color: zone.color, name: zone.name };
+    }
+
+    // ===== Room assignment with hysteresis =====
+    function assignRoom(rssi, currentRoom, lastRoomRssi) {
+        if (currentRoom === null || currentRoom === undefined) {
+            if (rssi >= -65) return 'D';
+            if (rssi >= -75) return Math.random() < 0.5 ? 'D' : 'C';
+            if (rssi >= -85) return Math.random() < 0.6 ? 'C' : 'B';
+            return 'A';
+        }
+
+        const diff = rssi - (lastRoomRssi ?? rssi);
+
+        switch (currentRoom) {
+            case 'D':
+                if (diff < -ROOM_HYSTERIS * 2) return diff <= -20 ? 'A' : (diff < -12 ? 'C' : 'B');
+                if (diff > ROOM_HYSTERIS && rssi < -68) return 'C';
+                return currentRoom;
+            case 'C':
+                if (diff < -ROOM_HYSTERIS * 2) return 'A';
+                if (diff > ROOM_HYSTERIS && rssi >= -65) return 'D';
+                return currentRoom;
+            case 'B':
+                if (diff < -ROOM_HYSTERIS * 2) return 'C';
+                if (diff > ROOM_HYSTERIS && rssi >= -72) return 'C';
+                return currentRoom;
+            case 'A':
+                if (diff > ROOM_HYSTERIS * 2 && rssi >= -78) return 'B';
+                if (diff > ROOM_HYSTERIS * 3 && rssi >= -68) return 'C';
+                if (diff > ROOM_HYSTERIS * 4 && rssi >= -62) return 'D';
+                return currentRoom;
+            default:
+                return currentRoom;
+        }
+    }
+
+    // ===== Position calculation =====
+    function getRoomPos(room, serial, smoothedRssi) {
+        const clampedRssi = Math.max(-100, Math.min(-45, smoothedRssi));
+        const distM = estimateDistance(clampedRssi);
+
+        if (distM <= 3) {
+            let hash = 0;
+            for (let i = 0; i < serial.length; i++) {
+                hash = ((hash << 5) - hash) + serial.charCodeAt(i);
+                hash |= 0;
+            }
+            const angle = Math.abs(hash) % 360 * Math.PI / 180;
+            const spreadPct = distM * 6;
+            let x = LAPTOP_POS.x + Math.cos(angle) * spreadPct;
+            let y = LAPTOP_POS.y + Math.sin(angle) * spreadPct;
+            x = Math.max(3, Math.min(95, x));
+            y = Math.max(3, Math.min(93, y));
+            return { x, y };
+        }
+
+        const r = ROOMS[room];
+        let hash = 0;
+        for (let i = 0; i < serial.length; i++) {
+            hash = ((hash << 5) - hash) + serial.charCodeAt(i);
+            hash |= 0;
+        }
+        const angle = Math.abs(hash) % 360 * Math.PI / 180;
+
+        const minSpread = 3;
+        const maxSpread = ROOM_SPREAD;
+        const spreadPct = minSpread + (distM / MAX_RANGE) * (maxSpread - minSpread);
+
+        let x = r.cx + Math.cos(angle) * spreadPct;
+        let y = r.cy + Math.sin(angle) * spreadPct;
+
+        x = Math.max(3, Math.min(95, x));
+        y = Math.max(3, Math.min(93, y));
+
+        return { x, y };
+    }
+
+    // ===== Signal distance estimation =====
+    function estimateDistance(rssi) {
+        if (rssi >= REF_RSSI_AT_1M) return 0.5;
+        const ratio = Math.pow(10, (REF_RSSI_AT_1M - rssi) / (10 * PATH_LOSS));
+        return Math.max(0.5, Math.min(ratio, MAX_RANGE));
+    }
+
+    // ===== Create tag marker on floor plan =====
+    function createTagMarker(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        let marker = document.getElementById(`marker-${serial}`);
+        if (marker) return marker;
+
+        const tag = state.tag;
+        marker = document.createElement('div');
+        marker.id = `marker-${serial}`;
+        marker.className = 'tag-marker';
+        marker.innerHTML = `
+            <div class="tag-marker-ping" id="ping-${serial}"></div>
+            <svg id="batteryRing-${serial}" width="44" height="44" viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="23" fill="none" stroke="#1e293b" stroke-width="2.5"/>
+                <circle id="batteryArc-${serial}" cx="24" cy="24" r="23" fill="none" stroke="#10b981"
+                        stroke-width="2.5" stroke-dasharray="144.5" stroke-dashoffset="0"
+                        transform="rotate(-90 24 24)" stroke-linecap="round"/>
+            </svg>
+            <svg id="personSvg-${serial}" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="4.5" r="1.5"/>
+                <line x1="12" y1="6" x2="12" y2="13"/>
+                <line class="w-arm-l" x1="12" y1="8.5" x2="9.5" y2="13" style="transform-origin:12px 8.5px;animation:swingArmL .5s ease-in-out infinite alternate;"/>
+                <line class="w-arm-r" x1="12" y1="8.5" x2="14.5" y2="13" style="transform-origin:12px 8.5px;animation:swingArmR .5s ease-in-out infinite alternate;"/>
+                <line class="w-leg-l" x1="12" y1="13" x2="9.5" y2="20" style="transform-origin:12px 13px;animation:swingLegL .5s ease-in-out infinite alternate;"/>
+                <line class="w-leg-r" x1="12" y1="13" x2="14.5" y2="20" style="transform-origin:12px 13px;animation:swingLegR .5s ease-in-out infinite alternate;"/>
+            </svg>
+            <div class="tag-label" id="label-${serial}">${tag.name || serial} --</div>
+        `;
+
+        const plan = document.getElementById('floorPlan');
+        plan.insertBefore(marker, document.getElementById('trailSvg'));
+        return marker;
+    }
+
+    // ===== Update marker position with smooth interpolation =====
+    function smoothPosition(serial, targetX, targetY) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        if (state.visualPos === undefined) {
+            state.visualPos = { x: targetX, y: targetY };
+            state.targetPos = { x: targetX, y: targetY };
+            return;
+        }
+
+        targetX = Math.max(3, Math.min(95, targetX));
+        targetY = Math.max(3, Math.min(93, targetY));
+
+        state.targetPos = { x: targetX, y: targetY };
+
+        const dx = Math.abs(state.visualPos.x - targetX);
+        const dy = Math.abs(state.visualPos.y - targetY);
+        if (dx < 0.1 && dy < 0.1) {
+            state.visualPos = { x: targetX, y: targetY };
+            return;
+        }
+
+        const oldX = state.visualPos.x;
+        const oldY = state.visualPos.y;
+
+        state.visualPos.x += POS_SMOOTH_ALPHA * (targetX - oldX);
+        state.visualPos.y += POS_SMOOTH_ALPHA * (targetY - oldY);
+
+        const stepPx = Math.sqrt(
+            Math.pow((state.visualPos.x - oldX) * 100, 2) +
+            Math.pow((state.visualPos.y - oldY) * 100, 2)
+        );
+
+        if (stepPx > MAX_JUMP_PX && dx + dy > 0.5) {
+            const ratio = MAX_JUMP_PX / stepPx;
+            state.visualPos.x = oldX + ratio * (state.visualPos.x - oldX);
+            state.visualPos.y = oldY + ratio * (state.visualPos.y - oldY);
+        }
+    }
+
+    // ===== Movement detection =====
+    function isMoving(serial, currentPos) {
+        const prev = prevPositions[serial];
+        if (!prev) return true; // first update, assume moving
+
+        const dx = Math.abs(currentPos.x - prev.x);
+        const dy = Math.abs(currentPos.y - prev.y);
+        return (dx + dy) > MOVEMENT_THRESHOLD;
+    }
+
+    function updateMovementState(serial, moving) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        // Update card avatar
+        const avatar = document.getElementById(`avatar-${serial}`);
+        if (avatar) {
+            if (moving) {
+                avatar.classList.add('walk-swatch');
+            } else {
+                avatar.classList.remove('walk-swatch');
+            }
+        }
+
+        // Update floor plan person icon
+        const personSvg = document.getElementById(`personSvg-${serial}`);
+        if (personSvg) {
+            if (!moving) {
+                personSvg.classList.add('standing');
+                // Remove inline animations
+                personSvg.querySelectorAll('line').forEach(line => {
+                    line.style.animation = 'none';
+                });
+            } else {
+                personSvg.classList.remove('standing');
+                // Restore inline animations
+                const armsL = personSvg.querySelector('.w-arm-l');
+                const armsR = personSvg.querySelector('.w-arm-r');
+                const legsL = personSvg.querySelector('.w-leg-l');
+                const legsR = personSvg.querySelector('.w-leg-r');
+                if (armsL) armsL.style.animation = 'swingArmL .5s ease-in-out infinite alternate';
+                if (armsR) armsR.style.animation = 'swingArmR .5s ease-in-out infinite alternate';
+                if (legsL) legsL.style.animation = 'swingLegL .5s ease-in-out infinite alternate';
+                if (legsR) legsR.style.animation = 'swingLegR .5s ease-in-out infinite alternate';
+            }
+        }
+
+        state.isMoving = moving;
+    }
+
+    // ===== Battery ring =====
+    function updateBatteryRing(serial, percent) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        const arc = document.getElementById(`batteryArc-${serial}`);
+        if (!arc) return;
+
+        const circumference = 2 * Math.PI * 23;
+        const offset = circumference * (1 - Math.max(0, percent) / 100);
+        arc.setAttribute('stroke-dashoffset', offset.toFixed(1));
+
+        let ringColor = '#10b981';
+        if (percent <= 0) ringColor = '#334155';
+        else if (percent < BATTERY_LOW_THRESHOLD) ringColor = '#ef4444';
+        else if (percent < BATTERY_MED_THRESHOLD) ringColor = '#f59e0b';
+
+        arc.setAttribute('stroke', ringColor);
+    }
+
+    // ===== Movement trail =====
+    function updateMovementTrail(serial, x, y) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        state.movementTrail.push({ x, y, ts: Date.now() });
+        if (state.movementTrail.length > TRAIL_MAX_LENGTH) {
+            state.movementTrail.shift();
+        }
+
+        renderTrails(serial);
+    }
+
+    function renderTrails(serial) {
+        const state = tagState[serial];
+        if (!state || state.movementTrail.length < 2) return;
+
+        const trailSvg = document.getElementById('trailSvg');
+        if (!trailSvg) return;
+
+        const oldPath = document.getElementById(`trail-${serial}`);
+        if (oldPath) oldPath.remove();
+        document.querySelectorAll(`.trail-dot[data-trail-tag="${serial}"]`).forEach(el => el.remove());
+
+        const rect = document.getElementById('floorPlan').getBoundingClientRect();
+        const maxTrailLen = Math.min(state.movementTrail.length, TRAIL_MAX_LENGTH);
+
+        const points = [];
+        for (let i = state.movementTrail.length - maxTrailLen; i < state.movementTrail.length; i++) {
+            const pt = state.movementTrail[i];
+            const px = (pt.x / 100) * rect.width;
+            const py = (pt.y / 100) * rect.height;
+            points.push(`${px},${py}`);
+
+            const dot = document.createElement('div');
+            dot.className = 'trail-dot';
+            dot.dataset.trailTag = serial;
+            dot.style.left = pt.x + '%';
+            dot.style.top = pt.y + '%';
+
+            const age = i - (state.movementTrail.length - maxTrailLen);
+            const opacity = Math.max(0.1, 1 - (maxTrailLen - age) / maxTrailLen);
+
+            dot.style.background = state.isOffline ? '#64748b' : SAFETY_ZONES[state.room]?.color || '#10b981';
+            dot.style.opacity = opacity.toFixed(2);
+
+            document.getElementById('floorPlan').appendChild(dot);
+        }
+
+        if (points.length >= 2) {
+            const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            polyline.setAttribute('points', points.join(' '));
+            polyline.setAttribute('fill', 'none');
+            polyline.setAttribute('stroke', state.isOffline ? '#64748b' : (SAFETY_ZONES[state.room]?.color || '#10b981'));
+            polyline.setAttribute('stroke-width', '0.6');
+            polyline.setAttribute('opacity', '0.3');
+            polyline.id = `trail-${serial}`;
+            trailSvg.appendChild(polyline);
+        }
+    }
+
+    // ===== Connection line =====
+    function drawConnectionLine(serial, tx, ty) {
+        const svg = document.getElementById('connSvg');
+        const cx = LAPTOP_POS.x, cy = LAPTOP_POS.y;
+
+        const rect = document.getElementById('floorPlan').getBoundingClientRect();
+        const x1 = (cx / 100) * rect.width;
+        const y1 = (cy / 100) * rect.height;
+        const x2 = (tx / 100) * rect.width;
+        const y2 = (ty / 100) * rect.height;
+
+        let line = document.getElementById(`line-${serial}`);
+        if (!line) {
+            line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.id = `line-${serial}`;
+            svg.appendChild(line);
+        }
+
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2);
+        line.setAttribute('y2', y2);
+
+        const zone = SAFETY_ZONES[tagState[serial]?.room] || SAFETY_ZONES.D;
+        line.setAttribute('stroke', tagState[serial]?.isOffline ? '#334155' : zone.color + '66');
+        line.setAttribute('stroke-dasharray', tagState[serial]?.isOffline ? 'none' : '4 3');
+    }
+
+    // ===== Update tag marker (main logic) =====
+    function updateTagMarker(serial, dist) {
+        const state = tagState[serial];
+        if (!state || !state.latestSignal) return;
+
+        const rawRssi = state.latestSignal.rssi;
+
+        // RSSI smoothing
+        if (state.smoothedRssi === null) {
+            state.smoothedRssi = rawRssi;
+        } else {
+            state.smoothedRssi = RSSI_SMOOTH_ALPHA * rawRssi + (1 - RSSI_SMOOTH_ALPHA) * state.smoothedRssi;
+        }
+        const smoothed = Math.round(state.smoothedRssi);
+
+        // Room assignment
+        const newRoom = assignRoom(smoothed, state.room, state.lastRoomRssi);
+        if (newRoom !== state.room) {
+            state.room = newRoom;
+            state.lastRoomRssi = smoothed;
+        }
+
+        // Position
+        const pos = getRoomPos(state.room, serial, rawRssi);
+        state.pos = pos;
+
+        // Movement detection
+        const wasMoving = state.isMoving || false;
+        const moving = isMoving(serial, pos);
+        if (moving !== wasMoving || prevPositions[serial] === undefined) {
+            updateMovementState(serial, moving);
+        }
+        prevPositions[serial] = { ...pos };
+
+        // Smooth position interpolation
+        smoothPosition(serial, pos.x, pos.y);
+
+        // Create/update marker
+        const marker = createTagMarker(serial);
+        if (!marker) return;
+
+        // Battery ring
+        updateBatteryRing(serial, state.batteryPercent);
+
+        // Offline detection
+        const timeSinceSignal = Date.now() - (state.lastSignalTime || 0);
+        if (timeSinceSignal > LOST_SIGNAL_THRESHOLD_MS) {
+            if (!state.isOffline) {
+                state.isOffline = true;
+                marker.classList.add('offline');
+            }
+        } else {
+            if (state.isOffline) {
+                state.isOffline = false;
+                marker.classList.remove('offline');
+            }
+        }
+
+        // Label
+        const label = document.getElementById(`label-${serial}`);
+        if (label) {
+            const displayRssi = rawRssi >= -60 ? rawRssi : state.smoothedRssi;
+            const displayDist = estimateDistance(displayRssi);
+            label.textContent = `${state.tag.name || serial} ${displayDist.toFixed(1)}m`;
+        }
+
+        // Safety color
+        const zone = SAFETY_ZONES[state.room] || SAFETY_ZONES.D;
+        let safetyColor = '#10b981';
+        if (state.isOffline) safetyColor = '#64748b';
+        else if (zone.severity === 'danger') safetyColor = '#ef4444';
+        else if (dist > 15) safetyColor = '#f59e0b';
+
+        const ping = document.getElementById(`ping-${serial}`);
+        if (ping) {
+            ping.style.background = safetyColor + '33';
+            ping.style.border = `2px solid ${safetyColor}`;
+        }
+
+        const personSvg = document.getElementById(`personSvg-${serial}`);
+        if (personSvg) {
+            personSvg.style.color = safetyColor;
+        }
+
+        // Update trails and connection lines (deferred to animation loop)
+        state.pendingTrailUpdate = true;
+        state.pendingConnLineUpdate = { x: pos.x, y: pos.y };
+    }
+
+    // ===== Animation loop (requestAnimationFrame) =====
+    function startAnimationLoop() {
+        if (animationRunning) return;
+        animationRunning = true;
+
+        function tick() {
+            // Update all markers at their current interpolated positions
+            Object.keys(tagState).forEach(serial => {
+                const state = tagState[serial];
+                if (!state.visualPos) return;
+
+                // Render marker position
+                const marker = document.getElementById(`marker-${serial}`);
+                if (marker) {
+                    marker.style.left = state.visualPos.x.toFixed(2) + '%';
+                    marker.style.top = state.visualPos.y.toFixed(2) + '%';
+                }
+
+                // Update connection lines and trails
+                if (state.pendingConnLineUpdate) {
+                    drawConnectionLine(serial, state.pendingConnLineUpdate.x, state.pendingConnLineUpdate.y);
+                    state.pendingConnLineUpdate = null;
+                }
+                if (state.pendingTrailUpdate) {
+                    updateMovementTrail(serial, state.pos.x, state.pos.y);
+                    state.pendingTrailUpdate = false;
+                }
+            });
+
+            requestAnimationFrame(tick);
+        }
+
+        requestAnimationFrame(tick);
+    }
+
+    // ===== Update tag card in sidebar =====
+    function updateTagCard(serial, rssi) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        const rssiEl = document.getElementById(`metric-rssi-${serial}`);
+        const distEl = document.getElementById(`metric-dist-${serial}`);
+        if (rssiEl) rssiEl.textContent = `RSSI ${rssi}`;
+        if (distEl) distEl.textContent = `${estimateDistance(rssi).toFixed(1)}m`;
+
+        let level = 0;
+        if (rssi >= -60) level = 5; else if (rssi >= -70) level = 4;
+        else if (rssi >= -80) level = 3; else if (rssi >= -90) level = 2;
+        else level = 1;
+
+        let colorClass = '#10b981';
+        if (rssi < -70) colorClass = '#f59e0b';
+        if (rssi < -85) colorClass = '#ef4444';
+
+        for (let i = 0; i < 5; i++) {
+            const barEl = document.getElementById(`b-${serial}-${i+1}`);
+            if (barEl) barEl.style.background = i < level ? colorClass : '#1e293b';
+        }
+
+        const avatar = document.getElementById(`avatar-${serial}`);
+        if (avatar) {
+            const color = getProximityColor(rssi);
+            avatar.style.background = color + '22';
+            avatar.style.color = color;
+        }
+
+        const card = document.querySelector(`.tag-card[data-serial="${serial}"]`);
+        if (card) {
+            const color = getProximityColor(rssi);
+            card.style.borderColor = color + '66';
+        }
+    }
+
+    // ===== Refresh all =====
+    function refreshAll() {
+        if (!selectedTagSerial) return;
+        const state = tagState[selectedTagSerial];
+        if (!state || !state.latestSignal) return;
+
+        updateDetail(selectedTagSerial, state.latestSignal.rssi);
+        updateTrend(selectedTagSerial, state.latestSignal.rssi);
+    }
+
+    // ===== Update detail view =====
+    function updateDetail(serial, rssi) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        const rssiEl = document.getElementById('rssiValue');
+        if (rssiEl) rssiEl.innerHTML = `<span class="${getRssiClass(rssi)}">${rssi}</span><span class="unit">dBm</span>`;
+
+        const dist = estimateDistance(rssi);
+        const distEl = document.getElementById('distValue');
+        if (distEl) distEl.innerHTML = `<span class="${getDistClass(dist)}">${dist.toFixed(1)}</span><span class="unit">m</span>`;
+
+        const zone = PROX_ZONES.find(z => rssi >= z.minRssi && rssi < z.maxRssi) || PROX_ZONES[5];
+        const proxEl = document.getElementById('proxBadge');
+        if (proxEl) proxEl.innerHTML = `<span class="prox-badge ${zone.cls}">${zone.label}</span>`;
+
+        const safetyStatus = getSafetyStatus(serial);
+        let safetyCls = 'prox-away';
+        if (safetyStatus.name === 'Control Room' || safetyStatus.name === 'Storage') safetyCls = 'prox-close';
+        else if (safetyStatus.name === 'Transit Corridor') safetyCls = 'prox-near';
+        else if (safetyStatus.name === 'DANGER' || safetyStatus.name === 'OFFLINE') safetyCls = 'prox-far';
+        const zoneBadgeEl = document.getElementById('zoneStatusBadge');
+        if (zoneBadgeEl) zoneBadgeEl.innerHTML = `<span class="prox-badge ${safetyCls}" style="color:${safetyStatus.color}">${safetyStatus.name}</span>`;
+
+        const signalBarsEl = document.getElementById('signalBars');
+        if (!signalBarsEl) return;
+        const bars = signalBarsEl.children;
+        let level = 0;
+        if (rssi >= -60) level = 5; else if (rssi >= -70) level = 4;
+        else if (rssi >= -80) level = 3; else if (rssi >= -90) level = 2;
+        else level = 1;
+
+        let colorClass = 'active-green';
+        if (rssi < -70) colorClass = 'active-yellow';
+        if (rssi < -85) colorClass = 'active-red';
+
+        for (let i = 0; i < 5 && bars[i]; i++) {
+            bars[i].className = i < level ? `bar ${colorClass}` : 'bar';
+        }
+
+        let conf = 100;
+        if (rssi >= -60) conf = 95; else if (rssi >= -65) conf = 80;
+        else if (rssi >= -70) conf = 65; else if (rssi >= -80) conf = 50;
+        else if (rssi >= -90) conf = 35; else conf = 20;
+        if (state.signals.length < 5) conf *= 0.7;
+
+        let cColor = '#10b981';
+        if (conf < 50) cColor = '#f59e0b';
+        if (conf < 30) cColor = '#ef4444';
+
+        const confBarEl = document.getElementById('confBar');
+        if (confBarEl) {
+            confBarEl.style.width = conf + '%';
+            confBarEl.style.background = cColor;
+        }
+        const confTextEl = document.getElementById('confText');
+        if (confTextEl) confTextEl.textContent = `${Math.round(conf)}% - ${conf > 70 ? 'Reliable' : conf > 40 ? 'Approximate' : 'Low confidence'}`;
+
+        drawChart(serial);
+        updateHistogram(serial);
+        updateBatteryDisplay(serial);
+    }
+
+    // ===== Battery display =====
+    function updateBatteryDisplay(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        const percentEl = document.getElementById('batteryPercent');
+        const fillEl = document.getElementById('batteryFill');
+
+        if (percentEl) {
+            percentEl.textContent = Math.round(state.batteryPercent) + '%';
+            if (state.batteryPercent < BATTERY_LOW_THRESHOLD) percentEl.style.color = '#ef4444';
+            else if (state.batteryPercent < BATTERY_MED_THRESHOLD) percentEl.style.color = '#f59e0b';
+            else percentEl.style.color = '#10b981';
+        }
+
+        if (fillEl) {
+            const fillWidth = Math.max(0, (state.batteryPercent / 100) * 17);
+            fillEl.setAttribute('width', fillWidth.toFixed(1));
+
+            let fillColor = '#10b981';
+            if (state.batteryPercent < BATTERY_LOW_THRESHOLD) fillColor = '#ef4444';
+            else if (state.batteryPercent < BATTERY_MED_THRESHOLD) fillColor = '#f59e0b';
+            else if (state.batteryPercent <= 0) fillColor = '#334155';
+            fillEl.setAttribute('fill', fillColor);
+        }
+    }
+
+    // ===== Update trend =====
+    function updateTrend(serial, rssi) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        const arrow = document.getElementById('trendArrow');
+        const text = document.getElementById('trendText');
+
+        if (state.history.length < 3) {
+            arrow.className = 'trend-arrow stable';
+            text.textContent = 'Insufficient data';
+            return;
+        }
+
+        const recent = state.history.slice(-3).map(s => s.rssi);
+        const avgRecent = average(recent);
+        const prevRssi = state.signals.length >= 20 ? state.signals[state.signals.length - 20].rssi : rssi;
+        const diff = avgRecent - prevRssi;
+
+        if (diff > 3) {
+            arrow.className = 'trend-arrow down';
+            text.textContent = `Closer (+${diff.toFixed(0)})`;
+        } else if (diff < -3) {
+            arrow.className = 'trend-arrow up';
+            text.textContent = `Away (${diff.toFixed(0)})`;
+        } else {
+            arrow.className = 'trend-arrow stable';
+            text.textContent = `Stationary (${prevRssi})`;
+        }
+    }
+
+    function calcDirectionStatsFor(serial, signals) {
+        const state = tagState[serial];
+        if (!state) return;
+        state.directionStats = { away: 0, stationary: 0, closer: 0 };
+        for (let i = 1; i < signals.length; i++) {
+            const diff = signals[i].rssi - signals[i-1].rssi;
+            if (diff > 3) state.directionStats.closer++;
+            else if (diff < -3) state.directionStats.away++;
+            else state.directionStats.stationary++;
+        }
+    }
+
+    function updateDirectionStats(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+        const dirAwayEl = document.getElementById('dirAway');
+        if (dirAwayEl) dirAwayEl.textContent = state.directionStats.away;
+        const dirStationEl = document.getElementById('dirStation');
+        if (dirStationEl) dirStationEl.textContent = state.directionStats.stationary;
+        const dirCloserEl = document.getElementById('dirCloser');
+        if (dirCloserEl) dirCloserEl.textContent = state.directionStats.closer;
+    }
+
+    function updateHistogram(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        const binCounts = {};
+        PROX_ZONES.forEach(z => binCounts[z.label] = 0);
+
+        state.signals.forEach(s => {
+            for (const zone of PROX_ZONES) {
+                if (s.rssi >= zone.minRssi && s.rssi < zone.maxRssi) {
+                    binCounts[zone.label]++;
+                    break;
+                }
+            }
+        });
+
+        const total = state.signals.length;
+        const maxCount = Math.max(...Object.values(binCounts), 1);
+
+        let html = '';
+        PROX_ZONES.forEach(zone => {
+            const count = binCounts[zone.label];
+            const width = (count / maxCount * 100);
+            html += `
+                <div class="prox-row">
+                    <span class="prox-label" style="color:${zone.color}">${zone.label}</span>
+                    <div class="prox-bar-bg">
+                        <div class="prox-bar" style="width:${Math.max(width, count > 0 ? 2 : 0)}%;background:${zone.color}"></div>
+                    </div>
+                    <span class="prox-count">${count}</span>
+                </div>`;
+        });
+
+        html += `<div style="font-size:8px;color:#475569;margin-top:4px;">${total} readings</div>`;
+        const proxBarsEl = document.getElementById('proxBars');
+        if (proxBarsEl) proxBarsEl.innerHTML = html;
+    }
+
+    // ===== Signal chart =====
+    function drawChart(serial) {
+        const canvas = document.getElementById('signalChart');
+        const container = canvas.parentElement;
+        if (!container.offsetWidth || !container.offsetHeight) return;
+
+        const state = tagState[serial];
+        if (!state) return;
+
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = container.offsetWidth * dpr;
+        canvas.height = 35 * dpr;
+
+        ctx.scale(dpr, dpr);
+        const w = container.offsetWidth;
+        const h = 35;
+        const pad = 3;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Zone background bands
+        const goodY = ((CHART_ZONE_GOOD_RSSI + 100) / 60) * h;
+        const poorY = ((CHART_ZONE_POOR_RSSI + 100) / 60) * h;
+
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.06)';
+        ctx.fillRect(pad, pad, w - pad * 2, goodY - pad);
+
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.06)';
+        ctx.fillRect(pad, goodY, w - pad * 2, poorY - goodY);
+
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.06)';
+        ctx.fillRect(pad, poorY, w - pad * 2, h - pad - poorY);
+
+        // Zone boundary lines
+        ctx.setLineDash([2, 2]);
+        ctx.lineWidth = 0.5;
+
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(pad, goodY);
+        ctx.lineTo(w - pad, goodY);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(pad, poorY);
+        ctx.lineTo(w - pad, poorY);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+
+        // Zone labels
+        ctx.font = '5px sans-serif';
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.5)';
+        ctx.fillText('GOOD', w - pad - 16, goodY - 2);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.5)';
+        ctx.fillText('FAIR', w - pad - 16, goodY + (poorY - goodY) / 2 + 1);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.5)';
+        ctx.fillText('POOR', w - pad - 16, poorY + (h - poorY) / 2 + 1);
+
+        // Signal line
+        if (state.history.length >= 2) {
+            const stepX = (w - pad * 2) / (state.history.length - 1);
+
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+
+            state.history.forEach((p, i) => {
+                const y = ((p.rssi + 100) / 60) * h;
+                const x = pad + i * stepX;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            const last = state.history[state.history.length - 1];
+            const lx = pad + (state.history.length - 1) * stepX;
+            const ly = ((last.rssi + 100) / 60) * h;
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(lx, ly, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // ===== Alerts system =====
+    function addAlert(serial, name, type, severity, message) {
+        const alert = {
+            id: `alert-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            serial,
+            tagName: name,
+            type,
+            severity,
+            message,
+            timestamp: new Date(),
+        };
+
+        globalAlerts.unshift(alert);
+        if (globalAlerts.length > 50) globalAlerts.pop();
+
+        if (!tagState[serial].alerts) tagState[serial].alerts = [];
+        tagState[serial].alerts.unshift(alert);
+
+        renderAlertPanel();
+    }
+
+    function triggerDangerZoneAlert(serial, tagName) {
+        const msg = `${tagName} entered Working Face (danger zone)`;
+        addAlert(serial, tagName, 'danger_zone', 'critical', msg);
+        showToast('DANGER', msg, 'critical');
+    }
+
+    function triggerLostSignalAlert(serial, tagName) {
+        const msg = `${tagName} signal lost (>10s silent)`;
+        addAlert(serial, tagName, 'lost_signal', 'critical', msg);
+        showToast('SIGNAL LOST', msg, 'critical');
+    }
+
+    function triggerBatteryLowAlert(serial, tagName, percent) {
+        const msg = `${tagName} battery low (${percent}%)`;
+        addAlert(serial, tagName, 'battery_low', 'warning', msg);
+        showToast('LOW BATTERY', msg, 'warning');
+    }
+
+    function checkAndCreateAlerts(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        const now = Date.now();
+        const zone = SAFETY_ZONES[state.room] || SAFETY_ZONES.D;
+
+        if (zone.severity === 'danger' && !state.safeZoneAlerted) {
+            triggerDangerZoneAlert(serial, state.tag.name);
+            state.safeZoneAlerted = true;
+        }
+
+        if (zone.severity !== 'danger') {
+            state.safeZoneAlerted = false;
+        }
+
+        const timeSinceSignal = now - (state.lastSignalTime || 0);
+        if (timeSinceSignal > LOST_SIGNAL_THRESHOLD_MS && !state.isOffline) {
+            triggerLostSignalAlert(serial, state.tag.name);
+        }
+
+        if (state.batteryPercent !== null && state.batteryPercent < BATTERY_LOW_THRESHOLD) {
+            const alreadyAlerted = globalAlerts.some(a => a.serial === serial && a.type === 'battery_low');
+            if (!alreadyAlerted) {
+                triggerBatteryLowAlert(serial, state.tag.name, Math.round(state.batteryPercent));
+            }
+        }
+    }
+
+    function renderAlertPanel() {
+        const list = document.getElementById('alertList');
+        if (!list) return;
+
+        if (globalAlerts.length === 0) {
+            list.innerHTML = '<div style="color:#475569;font-size:8px;text-align:center;padding:8px 0;">No alerts</div>';
+            return;
+        }
+
+        let html = '';
+        globalAlerts.slice(0, 15).forEach(alert => {
+            const timeStr = alert.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            html += `
+                <div class="alert-item ${alert.severity}">
+                    <div style="font-weight:600;">${alert.tagName}</div>
+                    <div style="color:#94a3b8;">${alert.message}</div>
+                    <div class="alert-time">${timeStr}</div>
+                </div>`;
+        });
+
+        list.innerHTML = html;
+    }
+
+    function showToast(title, message, severity) {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+
+        const existingMsgs = Array.from(container.querySelectorAll('.toast')).map(t => t.dataset.msg);
+        if (existingMsgs.includes(message)) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${severity}`;
+        toast.dataset.msg = message;
+        toast.innerHTML = `<strong>${title}</strong><br><span style="font-size:10px;color:#94a3b8;">${message}</span>`;
+
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.animation = 'toastOut 0.3s ease-in forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+
+        while (container.children.length > 4) {
+            container.firstChild.remove();
+        }
+    }
+
+    // ===== Battery simulation =====
+    function simulateBatteryDrain(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        if (state.batteryPercent === null) {
+            state.batteryPercent = 100;
+        }
+
+        state.batteryPercent = Math.max(0, state.batteryPercent - 0.002);
+    }
+
+    // ===== Safety overview KPIs =====
+    function updateSafetyOverview() {
+        let totalWorkers = 0;
+        let inSafeZones = 0;
+        let activeAlerts = 0;
+
+        Object.values(tagState).forEach(state => {
+            totalWorkers++;
+
+            const zone = SAFETY_ZONES[state.room] || SAFETY_ZONES.D;
+            if (zone.severity === 'safe') inSafeZones++;
+
+            const tagAlerts = state.alerts || [];
+            activeAlerts += tagAlerts.filter(a => {
+                return Date.now() - a.timestamp.getTime() < 60000;
+            }).length;
+        });
+
+        const totalEl = document.getElementById('kpiTotal');
+        const safeEl = document.getElementById('kpiSafe');
+        const alertsEl = document.getElementById('kpiAlerts');
+
+        if (totalEl) totalEl.textContent = totalWorkers;
+        if (safeEl) safeEl.textContent = inSafeZones;
+        if (alertsEl) alertsEl.textContent = activeAlerts;
+    }
+
+    // ===== Status helpers =====
+    function updateStatus(connected, message) {
+        const dot = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        dot.className = `status-dot${connected ? ' connected' : ''}`;
+        text.textContent = message || (connected ? 'Connected' : 'Connecting...');
+
+        const rateEl = document.getElementById('readingRate');
+        if (rateEl) {
+            rateEl.textContent = connected ? 'Live' : 'No connection';
+        }
+    }
+
+    function median(arr) {
+        const s = arr.slice().sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    }
+
+    function average(arr) {
+        return arr.reduce((a, b) => a + b, 0) / arr.length;
+    }
+
+    function getRssiClass(rssi) {
+        if (rssi >= -65) return 'rssi-good';
+        if (rssi < -80) return 'rssi-bad';
+        return 'rssi-mid';
+    }
+
+    function getDistClass(dist) {
+        if (dist <= 5) return 'rssi-good';
+        if (dist <= 15) return 'rssi-mid';
+        if (dist <= 30) return 'rssi-bad';
+        return '';
+    }
+
+    function getProximityColor(rssi) {
+        const zone = PROX_ZONES.find(z => rssi >= z.minRssi && rssi < z.maxRssi) || PROX_ZONES[5];
+        return zone.color;
+    }
+
+    // ===== Clear alerts =====
+    document.getElementById('clearAlertsBtn')?.addEventListener('click', () => {
+        globalAlerts.length = 0;
+        renderAlertPanel();
+    });
+
+    // ===== Tag loading =====
+    async function loadTags() {
+        try {
+            const resp = await fetch(`${API_BASE}/tags`);
+            if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+            const tags = await resp.json();
+
+            for (const s of Object.keys(tagState)) delete tagState[s];
+            document.querySelectorAll('.tag-marker').forEach(el => el.remove());
+
+            const container = document.getElementById('tagList');
+            container.innerHTML = '';
+
+            if (tags.length === 0) {
+                container.innerHTML = '<div style="color:#64748b;font-size:10px;">No tags</div>';
+                document.getElementById('tagDetail').style.display = 'none';
+                return;
+            }
+
+            const tagMap = {};
+            tags.forEach(t => {
+                tagMap[t.serialNumber] = t;
+                tagState[t.serialNumber] = {
+                    tag: t,
+                    signals: [],
+                    history: [],
+                    directionStats: { away: 0, stationary: 0, closer: 0 },
+                    latestSignal: null,
+                    room: 'D',
+                    pos: { x: 50, y: 50 },
+                    smoothedRssi: null,
+                    lastRoomRssi: null,
+                    visualPos: undefined,
+                    targetPos: { x: 50, y: 50 },
+                    batteryPercent: 100,
+                    isOffline: false,
+                    lastSignalTime: null,
+                    movementTrail: [],
+                    safeZoneAlerted: false,
+                    alerts: [],
+                    isMoving: false,
+                    pendingTrailUpdate: false,
+                    pendingConnLineUpdate: null,
+                };
+
+                const card = document.createElement('div');
+                card.className = 'tag-card';
+                card.dataset.serial = t.serialNumber;
+
+                // Get SVG from template (walking state)
+                const walkTemplate = document.getElementById('walkingSvgTemplate');
+                const avatarDiv = document.createElement('div');
+                avatarDiv.className = 'tag-avatar walk-swatch';
+                avatarDiv.id = `avatar-${t.serialNumber}`;
+                avatarDiv.style.background = '#33415522';
+                if (walkTemplate.content.firstElementChild) {
+                    avatarDiv.appendChild(walkTemplate.content.firstElementChild.cloneNode(true));
+                }
+
+                const nameRow = document.createElement('div');
+                nameRow.className = 'tag-name-row';
+                nameRow.appendChild(avatarDiv);
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'card-name';
+                nameDiv.textContent = t.name || t.serialNumber;
+                nameRow.appendChild(nameDiv);
+
+                const metricsDiv = document.createElement('div');
+                metricsDiv.className = 'card-metrics';
+                metricsDiv.innerHTML = `
+                    <span id="metric-rssi-${t.serialNumber}">RSSI --</span>
+                    <span id="metric-dist-${t.serialNumber}">-- m</span>
+                    <div style="display:flex;align-items:flex-end;gap:1px;height:10px;margin-left:2px;" id="bars-${t.serialNumber}">
+                        ${[1,2,3,4,5].map(i => `<div style="width:2px;height:${2+i*1.2}px;background:#1e293b;border-radius:1px;" id="b-${t.serialNumber}-${i}"></div>`).join('')}
+                    </div>
+                `;
+
+                card.appendChild(nameRow);
+                card.appendChild(metricsDiv);
+                card.onclick = () => selectTagForDetail(t.serialNumber);
+                container.appendChild(card);
+            });
+
+            // Load initial signals for all tags
+            await Promise.all(Object.keys(tagMap).map(serial => loadLatestSignal(serial)));
+
+            // Auto-select first tag
+            if (!selectedTagSerial && Object.keys(tagMap).length > 0) {
+                selectedTagSerial = Object.keys(tagMap)[0];
+                document.querySelector(`.tag-card[data-serial="${selectedTagSerial}"]`)?.classList.add('active');
+                showTagDetail(selectedTagSerial);
+            }
+
+        } catch (err) {
+            console.error('Error loading tags:', err);
+            document.getElementById('tagList').innerHTML = `<div style="color:#ef4444;font-size:10px;">Error: ${err.message}</div>`;
+        }
+    }
+
+    function selectTagForDetail(serial) {
+        selectedTagSerial = serial;
+        document.querySelectorAll('.tag-card').forEach(c => {
+            c.classList.toggle('active', c.dataset.serial === serial);
+        });
+        showTagDetail(serial);
+    }
+
+    async function loadSignalsForDetail(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        try {
+            const resp = await fetch(`${API_BASE}/signals/tags/${serial}`);
+            if (!resp.ok) return;
+            const signals = await resp.json();
+            state.signals = signals.map(s => ({ rssi: s.rssi, timestamp: s.timestamp }));
+            state.history = state.signals.slice(-MAX_HISTORY).map(s => ({ rssi: s.rssi }));
+            calcDirectionStatsFor(serial, state.signals);
+
+            drawChart(serial);
+            updateHistogram(serial);
+            updateDirectionStats(serial);
+        } catch (err) { /* ignore */ }
+    }
+
+    function showTagDetail(serial) {
+        const state = tagState[serial];
+        if (!state) return;
+
+        document.getElementById('tagDetail').style.display = 'block';
+
+        if (state.latestSignal) {
+            updateDetail(serial, state.latestSignal.rssi);
+            updateTrend(serial, state.latestSignal.rssi);
+
+            const last10 = state.signals.slice(-10).map(s => s.rssi);
+            if (last10.length > 0) {
+                const medRssi = median(last10);
+                updateTagMarker(serial, estimateDistance(medRssi));
+            }
+        } else {
+            loadSignalsForDetail(serial);
+        }
+    }
+
+    // ===== Load latest signal from HTTP =====
+    async function loadLatestSignal(serial) {
+        try {
+            const resp = await fetch(`${API_BASE}/signals/tags/${serial}/latest`);
+            if (!resp.ok) {
+                const state = tagState[serial];
+                if (state) state.lastSignalTime = Date.now();
+                return;
+            }
+
+            const signal = await resp.json();
+            const state = tagState[serial];
+            if (!state) return;
+
+            state.latestSignal = signal;
+            state.signals.push({ rssi: signal.rssi, timestamp: signal.timestamp });
+            if (state.signals.length > MAX_HISTORY) {
+                state.signals = state.signals.slice(-MAX_HISTORY);
+            }
+            state.history = state.signals.map(s => ({ rssi: s.rssi }));
+            calcDirectionStatsFor(serial, state.signals);
+
+            // Record actual signal receipt time for offline detection
+            state.lastSignalTime = Date.now();
+
+            updateTagCard(serial, signal.rssi);
+            updateStatus(true, 'Connected');
+
+            const dist = estimateDistance(signal.rssi);
+            createTagMarker(serial);
+            updateTagMarker(serial, dist);
+
+        } catch (err) { /* ignore */ }
+    }
+
+    // ===== WebSocket connection with HTTP fallback =====
+    let ws = null;
+    let wsReconnectTimer = null;
+    let httpPollTimer = null;
+    let useWebSocket = false;
+
+    function connectWebSocket() {
+        try {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                useWebSocket = true;
+                updateStatus(true, 'WebSocket Live');
+                stopHttpPolling();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const signal = JSON.parse(event.data);
+                    handleIncomingSignal(signal);
+                } catch (e) {
+                    console.error('WebSocket message parse error:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket closed, falling back to HTTP polling');
+                useWebSocket = false;
+                updateStatus(true, 'HTTP Polling');
+                startHttpPolling();
+                scheduleReconnect();
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+        } catch (e) {
+            console.log('WebSocket unavailable, using HTTP polling');
+            useWebSocket = false;
+        }
+    }
+
+    function scheduleReconnect() {
+        if (wsReconnectTimer) return;
+        wsReconnectTimer = setTimeout(() => {
+            wsReconnectTimer = null;
+            connectWebSocket();
+        }, 5000);
+    }
+
+    function handleIncomingSignal(signal) {
+        const state = tagState[signal.serialNumber];
+        if (!state) return;
+
+        state.latestSignal = signal;
+        state.signals.push({ rssi: signal.rssi, timestamp: signal.timestamp });
+        if (state.signals.length > MAX_HISTORY) {
+            state.signals = state.signals.slice(-MAX_HISTORY);
+        }
+        state.history = state.signals.map(s => ({ rssi: s.rssi }));
+        calcDirectionStatsFor(signal.serialNumber, state.signals);
+        state.lastSignalTime = Date.now();
+
+        updateTagCard(signal.serialNumber, signal.rssi);
+        updateStatus(true, 'WebSocket Live');
+
+        const dist = estimateDistance(signal.rssi);
+        createTagMarker(signal.serialNumber);
+        updateTagMarker(signal.serialNumber, dist);
+
+        // Update detail if selected tag received signal
+        if (selectedTagSerial === signal.serialNumber) {
+            updateDetail(signal.serialNumber, signal.rssi);
+            updateTrend(signal.serialNumber, signal.rssi);
+        }
+    }
+
+    function startHttpPolling() {
+        if (httpPollTimer) return;
+        httpPollTimer = setInterval(async () => {
+            await Promise.all(Object.keys(tagState).map(serial => loadLatestSignal(serial)));
+
+            Object.keys(tagState).forEach(serial => {
+                checkAndCreateAlerts(serial);
+                simulateBatteryDrain(serial);
+            });
+
+            updateSafetyOverview();
+
+            if (selectedTagSerial && tagState[selectedTagSerial]?.latestSignal) {
+                const state = tagState[selectedTagSerial];
+                updateDetail(selectedTagSerial, state.latestSignal.rssi);
+                updateTrend(selectedTagSerial, state.latestSignal.rssi);
+            }
+        }, 1000); // 1 second poll interval
+    }
+
+    function stopHttpPolling() {
+        if (httpPollTimer) {
+            clearInterval(httpPollTimer);
+            httpPollTimer = null;
+        }
+    }
+
+    // ===== Initialize =====
+    (async function init() {
+        await loadTags();
+        startAnimationLoop();
+        connectWebSocket();
+
+        // HTTP fallback polling kicks in if WebSocket fails
+        if (!useWebSocket) {
+            startHttpPolling();
+        }
+    })();
+</script>
+</body>
+</html>

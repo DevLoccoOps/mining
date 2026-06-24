@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: ble-tag-tracker
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ble_tag_tracker}
+    username: ${DB_USER:lebohang}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8081

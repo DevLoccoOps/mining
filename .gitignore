@@ -1,0 +1,31 @@
+# Environment
+.env
+
+# Python virtual environments
+.venv/
+.Scanner-venv/
+__pycache__/
+*.pyc
+
+# Java / Maven
+Backend/target/
+**/*.class
+**/*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.settings/
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend backup files
+Frontend/*.bak
+
+# Docker volumes (managed externally)
+pgdata/
