@@ -47,7 +47,11 @@ public class SignalReadingService {
             List<SignalReading> all = signalRepository.findBySerialNumberOrderByTimestampAsc(serialNumber);
             int toDelete = all.size() - MAX_SIGNALS_PER_TAG;
             List<Long> idsToDelete = all.stream().limit(toDelete).map(SignalReading::getId).toList();
-            signalRepository.deleteAllById(idsToDelete);
+            try {
+                signalRepository.deleteAllById(idsToDelete);
+            } catch (Exception e) {
+                // Ignore race condition — another thread may have already deleted some IDs
+            }
         }
     }
 
