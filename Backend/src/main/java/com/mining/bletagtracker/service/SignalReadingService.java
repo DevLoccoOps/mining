@@ -17,9 +17,13 @@ public class SignalReadingService {
     private final SignalReadingRepository signalRepository;
 
     public SignalReading recordSignal(CreateSignalRequest request) {
+        // Truncate to microseconds — matches PostgreSQL precision, so the check
+        // actually finds what was stored (nanoseconds would never match).
+        java.time.LocalDateTime ts = request.timestamp().withNano((request.timestamp().getNano() / 1_000) * 1_000);
+
         // Skip duplicate if the same signal was already recorded (same serial number + timestamp)
         List<SignalReading> existing = signalRepository.findBySerialNumberAndTimestamp(
-                request.serialNumber(), request.timestamp());
+                request.serialNumber(), ts);
         if (!existing.isEmpty()) {
             return null;
         }
@@ -27,7 +31,7 @@ public class SignalReadingService {
         SignalReading reading = SignalReading.builder()
                 .serialNumber(request.serialNumber())
                 .rssi(request.rssi())
-                .timestamp(request.timestamp())
+                .timestamp(ts)
                 .build();
         SignalReading saved = signalRepository.save(reading);
 

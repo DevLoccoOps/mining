@@ -9,9 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "signal_readings", indexes = {
-        @Index(columnList = "serial_number, timestamp", unique = true)
-})
+@Table(name = "signal_readings")
 @Data
 @Builder
 @NoArgsConstructor
