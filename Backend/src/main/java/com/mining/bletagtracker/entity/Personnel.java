@@ -48,4 +48,10 @@ public class Personnel {
     @JoinColumn(name = "tag_serial_number")
     private BleTag bleTag;
 
+    private String emergencyContactName;
+
+    private String emergencyRelationship;
+
+    private String emergencyPhone;
+    
 }

@@ -1,7 +1,5 @@
 package com.mining.bletagtracker.service;
 
-
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -17,214 +15,134 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PersonnelService {
 
+        private final PersonnelRepository personnelRepository;
 
-    private final PersonnelRepository personnelRepository;
+        private final BleTagRepository bleTagRepository;
 
-    private final BleTagRepository bleTagRepository;
+        // CREATE PERSONNEL
 
+        public Personnel createPersonnel(PersonnelRequest request) {
 
+                Personnel personnel = Personnel.builder()
+                                .employeeNumber(request.getEmployeeNumber())
+                                .idNumber(request.getIdNumber())
+                                .firstName(request.getFirstName())
+                                .surname(request.getSurname())
+                                .phoneNumber(request.getPhoneNumber())
+                                .department(request.getDepartment())
+                                .positionRole(request.getPositionRole())
+                                .contractor(request.getContractor())
+                                .emergencyContactName(request.getEmergencyContactName())
+                                .emergencyRelationship(request.getEmergencyRelationship())
+                                .emergencyPhone(request.getEmergencyPhone())
+                                .active(true)
+                                .build();
 
-    // CREATE PERSONNEL
+                return personnelRepository.save(personnel);
 
-    public Personnel createPersonnel(PersonnelRequest request){
+        }
 
+        // GET ALL ACTIVE PERSONNEL
 
-        Personnel personnel = Personnel.builder()
+        public List<Personnel> getAllPersonnel() {
 
-                .employeeNumber(request.getEmployeeNumber())
+                return personnelRepository.findByActiveTrue();
 
-                .idNumber(request.getIdNumber())
+        }
 
-                .firstName(request.getFirstName())
+        // GET PERSONNEL BY ID
 
-                .surname(request.getSurname())
+        public Personnel getPersonnel(Long id) {
 
-                .phoneNumber(request.getPhoneNumber())
+                return personnelRepository.findById(id)
 
-                .department(request.getDepartment())
+                                .orElseThrow(
+                                                () -> new RuntimeException(
+                                                                "Personnel not found"));
 
-                .positionRole(request.getPositionRole())
+        }
 
-                .contractor(request.getContractor())
+        // UPDATE PERSONNEL
 
-                .active(true)
+        public Personnel updatePersonnel(
+                        Long id,
+                        PersonnelRequest request) {
 
-                .build();
+                Personnel existing = getPersonnel(id);
 
+                existing.setEmployeeNumber(
+                                request.getEmployeeNumber());
 
+                existing.setIdNumber(
+                                request.getIdNumber());
 
-        return personnelRepository.save(personnel);
+                existing.setFirstName(
+                                request.getFirstName());
 
-    }
+                existing.setSurname(
+                                request.getSurname());
 
+                existing.setPhoneNumber(
+                                request.getPhoneNumber());
 
+                existing.setDepartment(
+                                request.getDepartment());
 
+                existing.setPositionRole(
+                                request.getPositionRole());
 
+                existing.setContractor(
+                                request.getContractor());
+                existing.setEmergencyContactName(request.getEmergencyContactName());
+                existing.setEmergencyRelationship(request.getEmergencyRelationship());
+                existing.setEmergencyPhone(request.getEmergencyPhone());
 
-    // GET ALL ACTIVE PERSONNEL
+                return personnelRepository.save(existing);
 
-    public List<Personnel> getAllPersonnel(){
+        }
 
-        return personnelRepository.findByActiveTrue();
+        // SOFT DELETE
 
-    }
+        public void deletePersonnel(Long id) {
 
+                Personnel personnel = getPersonnel(id);
 
+                personnel.setActive(false);
 
+                personnelRepository.save(personnel);
 
+        }
 
-    // GET PERSONNEL BY ID
+        // ASSIGN BLE TAG TO PERSON
 
-    public Personnel getPersonnel(Long id){
+        public Personnel assignTag(
+                        Long personnelId,
+                        String tagSerial) {
 
-        return personnelRepository.findById(id)
+                Personnel personnel = getPersonnel(personnelId);
 
-                .orElseThrow(
-                        () -> new RuntimeException(
-                                "Personnel not found"
-                        )
-                );
+                BleTag tag = bleTagRepository.findById(tagSerial)
 
-    }
+                                .orElseThrow(
+                                                () -> new RuntimeException(
+                                                                "BLE Tag not found"));
 
+                personnel.setBleTag(tag);
 
+                return personnelRepository.save(personnel);
 
+        }
 
+        // REMOVE BLE TAG
 
-    // UPDATE PERSONNEL
+        public void removeTag(Long personnelId) {
 
+                Personnel personnel = getPersonnel(personnelId);
 
-    public Personnel updatePersonnel(
-            Long id,
-            PersonnelRequest request
-    ){
+                personnel.setBleTag(null);
 
-        Personnel existing = getPersonnel(id);
+                personnelRepository.save(personnel);
 
-
-
-        existing.setEmployeeNumber(
-                request.getEmployeeNumber()
-        );
-
-
-        existing.setIdNumber(
-                request.getIdNumber()
-        );
-
-
-        existing.setFirstName(
-                request.getFirstName()
-        );
-
-
-        existing.setSurname(
-                request.getSurname()
-        );
-
-
-        existing.setPhoneNumber(
-                request.getPhoneNumber()
-        );
-
-
-        existing.setDepartment(
-                request.getDepartment()
-        );
-
-
-        existing.setPositionRole(
-                request.getPositionRole()
-        );
-
-
-        existing.setContractor(
-                request.getContractor()
-        );
-
-
-
-        return personnelRepository.save(existing);
-
-    }
-
-
-
-
-
-
-    // SOFT DELETE
-
-    public void deletePersonnel(Long id){
-
-
-        Personnel personnel = getPersonnel(id);
-
-
-        personnel.setActive(false);
-
-
-        personnelRepository.save(personnel);
-
-    }
-
-
-
-
-
-
-    // ASSIGN BLE TAG TO PERSON
-
-    public Personnel assignTag(
-            Long personnelId,
-            String tagSerial
-    ){
-
-
-        Personnel personnel = getPersonnel(personnelId);
-
-
-
-        BleTag tag = bleTagRepository.findById(tagSerial)
-
-                .orElseThrow(
-                        () -> new RuntimeException(
-                                "BLE Tag not found"
-                        )
-                );
-
-
-
-        personnel.setBleTag(tag);
-
-
-
-        return personnelRepository.save(personnel);
-
-    }
-
-
-
-
-
-
-    // REMOVE BLE TAG
-
-    public void removeTag(Long personnelId){
-
-
-        Personnel personnel = getPersonnel(personnelId);
-
-
-
-        personnel.setBleTag(null);
-
-
-
-        personnelRepository.save(personnel);
-
-    }
-
-
+        }
 
 }

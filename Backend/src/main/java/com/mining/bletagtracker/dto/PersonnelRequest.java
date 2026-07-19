@@ -25,5 +25,11 @@ package com.mining.bletagtracker.dto;
     
         private Boolean contractor;
 
+        // Emergency contact
+
+        private String emergencyContactName;
+
+        private String emergencyRelationship;
     
+        private String emergencyPhone;
     }
