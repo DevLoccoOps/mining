@@ -12,5 +12,12 @@
       "A81A6C31-B23D-523F-7E95-DEB0071CDAFD"
     ],
     "rssi_threshold": -90
+  },
+  "HD5086QVJB2": {
+    "name": "Kefentse",
+    "ibeacon_uuids": [
+      "6E176117-5F70-44D0-DDBA-18379D9898AC"
+    ],
+    "rssi_threshold": -90
   }
 }
