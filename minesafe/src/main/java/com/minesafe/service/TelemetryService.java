@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 /**
  * Persists continuous telemetry readings and enforces a time-based retention
@@ -38,6 +39,11 @@ public class TelemetryService {
     @Transactional
     public Telemetry record(Telemetry telemetry) {
         return repository.save(telemetry);
+    }
+
+    /** Most recent readings, newest first (capped at 500 by the repository). */
+    public List<Telemetry> recent() {
+        return repository.findFirst500ByOrderByCreatedAtDescIdDesc();
     }
 
     /**

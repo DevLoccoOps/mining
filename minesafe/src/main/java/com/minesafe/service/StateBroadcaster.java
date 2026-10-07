@@ -43,15 +43,18 @@ public class StateBroadcaster {
             });
 
     private final MinerStateStore minerStateStore;
+    private final GatewayStateStore gatewayStateStore;
     private final LiveHub liveHub;
     private final AlertLogRepository alertLogRepository;
     private final int maxRetention;
 
     public StateBroadcaster(MinerStateStore minerStateStore,
+                            GatewayStateStore gatewayStateStore,
                             LiveHub liveHub,
                             AlertLogRepository alertLogRepository,
                             @Value("${app.alerts.max-retention:50000}") int maxRetention) {
         this.minerStateStore = minerStateStore;
+        this.gatewayStateStore = gatewayStateStore;
         this.liveHub = liveHub;
         this.alertLogRepository = alertLogRepository;
         this.maxRetention = maxRetention;
@@ -67,6 +70,7 @@ public class StateBroadcaster {
         if (evicted > 0) {
             log.debug("Evicted {} stale miners", evicted);
         }
+        gatewayStateStore.evictStale();
 
         // Note: broadcast even when empty (total_miners: 0) — matches app.py:286,
         // which always emits state_update so clients see miners disappear.
@@ -117,7 +121,19 @@ public class StateBroadcaster {
                 .sorted(Comparator.comparing(MinerEntry::mac))
                 .toList();
 
-        StateUpdate payload = new StateUpdate(snapshots.size(), zoneList, allAlerts, minerList);
+        // Gateways: last activity per reporter plus a live miner count (how many
+        // tracked miners each gateway currently reports on).
+        Map<String, Long> minersPerGateway = snapshots.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        s -> s.reporter() != null ? s.reporter() : "UNKNOWN",
+                        java.util.stream.Collectors.counting()));
+        List<GatewayEntry> gatewayList = gatewayStateStore.all().stream()
+                .map(g -> new GatewayEntry(g.id(), g.zone(), g.rssi(), g.lastSeenEpoch(),
+                        minersPerGateway.getOrDefault(g.id(), 0L).intValue()))
+                .sorted(Comparator.comparingDouble(GatewayEntry::lastSeen).reversed())
+                .toList();
+
+        StateUpdate payload = new StateUpdate(snapshots.size(), zoneList, allAlerts, minerList, gatewayList);
         liveHub.broadcast(payload);
     }
 
@@ -140,7 +156,10 @@ public class StateBroadcaster {
     // --- Payload records (serialized as snake_case by Jackson) ---
 
     public record StateUpdate(int totalMiners, List<ZoneSummary> zones, List<AlertEntry> alerts,
-                              List<MinerEntry> miners) {}
+                              List<MinerEntry> miners, List<GatewayEntry> gateways) {}
+
+    /** Per-gateway liveness snapshot; miners = live miners it currently reports on. */
+    public record GatewayEntry(String id, String zone, double rssi, double lastSeen, int miners) {}
 
     public record ZoneSummary(String zone, int total, int critical, int danger, int warning, String avgTemp) {}
 

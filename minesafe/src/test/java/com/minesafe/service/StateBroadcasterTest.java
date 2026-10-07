@@ -23,6 +23,7 @@ import static org.mockito.Mockito.verify;
 class StateBroadcasterTest {
 
     @Mock MinerStateStore minerStateStore;
+    @Mock GatewayStateStore gatewayStateStore;
     @Mock LiveHub liveHub;
     @Mock AlertLogRepository alertLogRepository;
 
@@ -30,7 +31,7 @@ class StateBroadcasterTest {
 
     @BeforeEach
     void setUp() {
-        broadcaster = new StateBroadcaster(minerStateStore, liveHub, alertLogRepository, 50000);
+        broadcaster = new StateBroadcaster(minerStateStore, gatewayStateStore, liveHub, alertLogRepository, 50000);
     }
 
     @Test
@@ -65,6 +66,32 @@ class StateBroadcasterTest {
     }
 
     @Test
+    void broadcastIncludesGatewayEntriesWithMinerCounts() {
+        var miner = new MinerStateStore.MinerSnapshot(
+                "AABBCCDDEEFF", "Test Miner", "ZONE1", "KNOT_05",
+                new BigDecimal("35.5"), 90, 4.2, -62.0,
+                List.of(), true, true, 1000.0, true);
+        org.mockito.Mockito.when(minerStateStore.all()).thenReturn(List.of(miner));
+        org.mockito.Mockito.when(gatewayStateStore.all()).thenReturn(List.of(
+                new GatewayStateStore.GatewaySnapshot("KNOT_05", "05", -58.0, 999.0),
+                new GatewayStateStore.GatewaySnapshot("KNOT_02", "02", -70.0, 500.0)));
+
+        broadcaster.broadcastState();
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(liveHub).broadcast(captor.capture());
+        var payload = (StateBroadcaster.StateUpdate) captor.getValue();
+
+        assertThat(payload.gateways()).hasSize(2);
+        // Sorted by last_seen descending.
+        assertThat(payload.gateways().get(0).id()).isEqualTo("KNOT_05");
+        assertThat(payload.gateways().get(0).zone()).isEqualTo("05");
+        assertThat(payload.gateways().get(0).miners()).isEqualTo(1);
+        assertThat(payload.gateways().get(1).id()).isEqualTo("KNOT_02");
+        assertThat(payload.gateways().get(1).miners()).isZero();
+    }
+
+    @Test
     void payloadSerializesToExpectedSnakeCaseShape() throws Exception {
         var mapper = new ObjectMapper();
         // Match production config: snake_case to keep parity with the legacy Python API.
@@ -89,6 +116,7 @@ class StateBroadcasterTest {
         assertThat(root.get("miners").get(0).get("mac").asText()).isEqualTo("AABBCCDDEEFF");
         assertThat(root.get("miners").get(0).get("last_seen").asDouble()).isEqualTo(1000.0);
         assertThat(root.get("miners").get(0).get("alerts").get(0).get("message").asText()).isEqualTo("FALL DETECTED");
+        assertThat(root.get("gateways").isArray()).isTrue();
     }
 
     @Test

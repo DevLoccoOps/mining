@@ -8,8 +8,12 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 public interface TelemetryRepository extends JpaRepository<Telemetry, Long> {
+
+    /** Most recent readings, newest first — backs {@code GET /api/telemetry/recent}. */
+    List<Telemetry> findFirst500ByOrderByCreatedAtDescIdDesc();
 
     /**
      * Deletes all telemetry rows older than the given cutoff. Used by the hourly

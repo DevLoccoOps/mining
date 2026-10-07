@@ -56,6 +56,7 @@ public class TelemetryIngester {
     private final PersonnelService personnelService;
     private final TagService tagService;
     private final MinerStateStore minerStateStore;
+    private final GatewayStateStore gatewayStateStore;
     private final TelemetryService telemetryService;
 
     private final ConcurrentHashMap<String, Double> rssiEma = new ConcurrentHashMap<>();
@@ -67,6 +68,7 @@ public class TelemetryIngester {
                              PersonnelService personnelService,
                              TagService tagService,
                              MinerStateStore minerStateStore,
+                             GatewayStateStore gatewayStateStore,
                              TelemetryService telemetryService) {
         this.objectMapper = objectMapper;
         this.blePayloadParser = blePayloadParser;
@@ -75,6 +77,7 @@ public class TelemetryIngester {
         this.personnelService = personnelService;
         this.tagService = tagService;
         this.minerStateStore = minerStateStore;
+        this.gatewayStateStore = gatewayStateStore;
         this.telemetryService = telemetryService;
     }
 
@@ -111,6 +114,9 @@ public class TelemetryIngester {
         int rawRssi = values.rssi() != null ? values.rssi() : -100;
 
         double rssi = smoothRssi(mac, rawRssi);
+
+        // Track the forwarding gateway for liveness/observability (it has no heartbeat).
+        gatewayStateStore.seen(reporter, rssi);
 
         Optional<Personnel> personnel = personnelService.findByMacOrNull(mac);
         Optional<Tag> tag = tagService.findByMacOrNull(mac);

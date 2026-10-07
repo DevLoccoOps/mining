@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,6 +42,7 @@ class TelemetryIngesterTest {
     @Mock
     private TelemetryService telemetryService;
 
+    private GatewayStateStore gatewayStateStore;
     private TelemetryIngester ingester;
 
     // 22-byte outdoor frame: signature 15ff4f09, accZ = 1.0g, temp = 35.00°C
@@ -50,10 +52,11 @@ class TelemetryIngesterTest {
 
     @BeforeEach
     void setUp() {
+        gatewayStateStore = new GatewayStateStore();
         ingester = new TelemetryIngester(new ObjectMapper(),
                 new BlePayloadParser(), new SafetyEngine(),
                 alertLogService, personnelService, tagService,
-                new MinerStateStore(), telemetryService);
+                new MinerStateStore(), gatewayStateStore, telemetryService);
     }
 
     private String mqttBody(String hex) {
@@ -116,5 +119,18 @@ class TelemetryIngesterTest {
     void emptyRecordListIsSkipped() {
         ingester.ingest("{\"AA:BB:CC:DD:EE:FF\":[]}");
         verify(telemetryService, never()).record(any(Telemetry.class));
+    }
+
+    @Test
+    void ingestRecordsTheForwardingGateway() {
+        when(personnelService.findByMacOrNull(anyString())).thenReturn(Optional.empty());
+        when(tagService.findByMacOrNull(anyString())).thenReturn(Optional.empty());
+
+        ingester.ingest(mqttBody("4c000215" + "0102030405060708090a0b0c0d0e0f10" + "0001" + "0002" + "c5"));
+
+        assertThat(gatewayStateStore.activeCount()).isEqualTo(1);
+        var gw = gatewayStateStore.all().iterator().next();
+        assertThat(gw.id()).isEqualTo("KNOT_ZONE1");
+        assertThat(gw.zone()).isEqualTo("ZONE1");
     }
 }
