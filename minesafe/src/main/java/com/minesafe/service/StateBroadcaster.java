@@ -110,7 +110,14 @@ public class StateBroadcaster {
             zoneList.add(new ZoneSummary(entry.getKey(), za.total, za.critical, za.danger, za.warning, avgTemp));
         }
 
-        StateUpdate payload = new StateUpdate(snapshots.size(), zoneList, allAlerts);
+        List<MinerEntry> minerList = snapshots.stream()
+                .map(s -> new MinerEntry(s.mac(), s.name(), s.zone(), s.reporter(), s.temperature(),
+                        s.battery(), s.distance(), s.rssi(), s.alerts(), s.outdoor(), s.moving(),
+                        s.lastSeenEpoch(), s.registered()))
+                .sorted(Comparator.comparing(MinerEntry::mac))
+                .toList();
+
+        StateUpdate payload = new StateUpdate(snapshots.size(), zoneList, allAlerts, minerList);
         liveHub.broadcast(payload);
     }
 
@@ -132,11 +139,17 @@ public class StateBroadcaster {
 
     // --- Payload records (serialized as snake_case by Jackson) ---
 
-    public record StateUpdate(int totalMiners, List<ZoneSummary> zones, List<AlertEntry> alerts) {}
+    public record StateUpdate(int totalMiners, List<ZoneSummary> zones, List<AlertEntry> alerts,
+                              List<MinerEntry> miners) {}
 
     public record ZoneSummary(String zone, int total, int critical, int danger, int warning, String avgTemp) {}
 
     public record AlertEntry(String mac, String name, String zone, String type, String msg) {}
+
+    /** Per-miner live snapshot so clients can render a live personnel table. */
+    public record MinerEntry(String mac, String name, String zone, String reporter, BigDecimal temperature,
+                             Integer battery, double distance, double rssi, List<Alert> alerts,
+                             boolean outdoor, boolean moving, double lastSeen, boolean registered) {}
 
     private static final class ZoneAccumulator {
         int total;
